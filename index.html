@@ -59,7 +59,7 @@
   </style>
 
   <script>
-    var serviceWorkerVersion = '1187745257';
+    var serviceWorkerVersion = '4085253749';
   </script>
   <script src="flutter.js" defer></script>
 </head>
@@ -78,16 +78,25 @@
       setTimeout(function () { if (boot.parentNode) boot.parentNode.removeChild(boot); }, 460);
     }
 
+    // 清理历史 Service Worker 缓存，保证每次访问都是最新版本
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
+      });
+    }
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (keys) {
+        keys.forEach(function (k) { caches.delete(k); });
+      });
+    }
+
     window.addEventListener('load', function () {
-      _flutter.loader.loadEntrypoint({
-        serviceWorker: {
-          serviceWorkerVersion: serviceWorkerVersion
-        }
-      }).then(function (engineInitializer) {
+      // 不启用 Service Worker：直接以 <script> 方式加载入口，避免 CDN 缓存导致的白屏
+      _flutter.loader.loadEntrypoint().then(function (engineInitializer) {
         return engineInitializer.initializeEngine();
       }).then(function (appRunner) {
         appRunner.runApp();
-        setTimeout(hideBoot, 500);
+        setTimeout(hideBoot, 400);
       }).catch(function (err) {
         console.error('Flutter bootstrap failed:', err);
         hideBoot();
