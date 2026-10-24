@@ -1,5 +1,11 @@
 # 鲸记账 · Whale Ledger
 
+[![Release](https://img.shields.io/github/v/release/niceday-hh/dsv41flash_app1?label=release)](https://github.com/niceday-hh/dsv41flash_app1/releases)
+[![Web](https://img.shields.io/badge/demo-online-6C5CE7)](https://niceday-hh.github.io/dsv41flash_app1/)
+
+> 🌐 在线体验：**https://niceday-hh.github.io/dsv41flash_app1/**
+> 📱 下载 APK：**https://github.com/niceday-hh/dsv41flash_app1/releases/latest**
+
 一款用 **Flutter** 打造的时尚轻盈记账 App，整体视觉参考「鲨鱼记账」等主流账本，融合 iOS 17 风格的大圆角卡片、磨砂玻璃底栏、渐变主视觉与细腻的动效。
 
 > Android APK 与 Web 版由同一套 Flutter 代码构建。
@@ -49,11 +55,15 @@ flutter run -d chrome       # 浏览器预览
 ## 📦 构建
 
 ```bash
-# Android APK（已配置签名，见 android/key.properties）
+# Android APK（需自备 android/key.properties 与 keystore）
 flutter build apk --release
 
-# Web
+# Web（GitHub Pages 路径）
 flutter build web --release --web-renderer html --base-href /dsv41flash_app1/
+rm -f build/web/flutter_service_worker.js   # 关闭 SW，避免 CDN 缓存导致白屏
+
+# 一键发布（Pages + Release）
+GITHUB_TOKEN=xxx ./scripts/deploy.sh
 ```
 
 产物：

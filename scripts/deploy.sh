@@ -17,6 +17,7 @@ fi
 
 echo "==> 1/5 构建 Web（base-href /${REPO#*/}/）"
 flutter build web --release --web-renderer html --base-href "/${REPO#*/}/"
+rm -f build/web/flutter_service_worker.js
 
 echo "==> 2/5 构建 APK"
 if command -v java >/dev/null 2>&1; then
