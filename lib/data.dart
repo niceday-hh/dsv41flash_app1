@@ -30,6 +30,31 @@ const List<CategoryDef> kIncomeCats = <CategoryDef>[
 
 List<CategoryDef> catsFor(bool expense) => expense ? kExpenseCats : kIncomeCats;
 
+/// 中文分类名 → 分类 id（用于 CSV 导入）
+String catIdByName(String name) {
+  const Map<String, String> alias = <String, String>{
+    '餐饮': 'food', '吃饭': 'food', 'food': 'food',
+    '交通': 'traffic', '出行': 'traffic', 'traffic': 'traffic',
+    '购物': 'shop', 'shop': 'shop',
+    '娱乐': 'fun', 'fun': 'fun',
+    '居住': 'home', '房租': 'home', 'home': 'home',
+    '通讯': 'phone', 'phone': 'phone',
+    '医疗': 'health', 'health': 'health',
+    '学习': 'study', '办公': 'study', 'study': 'study',
+    '旅行': 'travel', 'travel': 'travel',
+    '宠物': 'pet', 'pet': 'pet',
+    '美容': 'beauty', 'beauty': 'beauty',
+    '工资': 'salary', 'salary': 'salary',
+    '奖金': 'bonus', 'bonus': 'bonus',
+    '理财': 'invest', '投资': 'invest', 'invest': 'invest',
+    '红包': 'gift', 'gift': 'gift',
+    '兼职': 'parttime', 'parttime': 'parttime',
+    '其他收入': 'otherin', 'otherin': 'otherin',
+    '日用': 'other', '其他': 'other', 'other': 'other',
+  };
+  return alias[name.trim()] ?? 'other';
+}
+
 CategoryDef catById(String id) {
   for (final CategoryDef c in kExpenseCats) {
     if (c.id == id) return c;

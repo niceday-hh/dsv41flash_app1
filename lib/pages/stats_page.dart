@@ -7,8 +7,12 @@ import '../data.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../ui/add_sheet.dart';
 import '../ui/charts.dart';
 import '../ui/common.dart';
+import 'insight_page.dart';
+
+const List<String> _periodNames = <String>['周', '月', '季', '年'];
 
 class StatsPage extends StatefulWidget {
   const StatsPage({Key? key}) : super(key: key);
@@ -18,37 +22,175 @@ class StatsPage extends StatefulWidget {
 }
 
 class _StatsPageState extends State<StatsPage> {
-  late DateTime _month;
-  bool _yearMode = false;
+  int _period = 1; // 0 周 1 月 2 季 3 年
+  late DateTime _anchor;
   bool _expense = true;
   int _selected = -1;
 
   @override
   void initState() {
     super.initState();
-    final DateTime now = DateTime.now();
-    _month = DateTime(now.year, now.month, 1);
+    _anchor = DateTime.now();
   }
 
-  List<Bill> _periodBills(AppStore store) {
-    if (_yearMode) {
-      return store.bills.where((Bill b) => b.date.year == _month.year).toList();
+  // ------------------------------------------------------------- 区间计算
+
+  DateTime get _start {
+    switch (_period) {
+      case 0:
+        final DateTime d = DateTime(_anchor.year, _anchor.month, _anchor.day);
+        return d.subtract(Duration(days: d.weekday - 1));
+      case 2:
+        final int qm = ((_anchor.month - 1) ~/ 3) * 3 + 1;
+        return DateTime(_anchor.year, qm, 1);
+      case 3:
+        return DateTime(_anchor.year, 1, 1);
+      default:
+        return DateTime(_anchor.year, _anchor.month, 1);
     }
-    return AppStore.inMonth(store.bills, _month);
+  }
+
+  DateTime get _end {
+    switch (_period) {
+      case 0:
+        return _start.add(const Duration(days: 6));
+      case 2:
+        return DateTime(_start.year, _start.month + 3, 0);
+      case 3:
+        return DateTime(_start.year, 12, 31);
+      default:
+        return DateTime(_start.year, _start.month + 1, 0);
+    }
+  }
+
+  String get _label {
+    switch (_period) {
+      case 0:
+        final DateTime s = _start;
+        final DateTime e = _end;
+        return '${s.month}月${s.day}日 - ${e.month}月${e.day}日';
+      case 2:
+        return '${_start.year} 年 第${((_start.month - 1) ~/ 3) + 1}季度';
+      case 3:
+        return '${_start.year} 年';
+      default:
+        return '${_start.year}年${_start.month}月';
+    }
+  }
+
+  bool get _isCurrent {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    return !today.isBefore(_start) && !today.isAfter(_end);
   }
 
   void _shift(int delta) {
-    final DateTime now = DateTime.now();
-    final DateTime next = _yearMode
-        ? DateTime(_month.year + delta, 1, 1)
-        : DateTime(_month.year, _month.month + delta, 1);
-    if (next.isAfter(DateTime(now.year, now.month, 1))) return;
     HapticFeedback.selectionClick();
     setState(() {
-      _month = next;
+      switch (_period) {
+        case 0:
+          _anchor = _anchor.add(Duration(days: 7 * delta));
+          break;
+        case 2:
+          _anchor = DateTime(_anchor.year, _anchor.month + 3 * delta, 1);
+          break;
+        case 3:
+          _anchor = DateTime(_anchor.year + delta, 1, 1);
+          break;
+        default:
+          _anchor = DateTime(_anchor.year, _anchor.month + delta, 1);
+      }
       _selected = -1;
     });
   }
+
+  void _backToCurrent() {
+    HapticFeedback.selectionClick();
+    setState(() {
+      _anchor = DateTime.now();
+      _selected = -1;
+    });
+  }
+
+  bool _inRange(DateTime d, DateTime s, DateTime e) {
+    final DateTime day = DateTime(d.year, d.month, d.day);
+    return !day.isBefore(s) && !day.isAfter(e);
+  }
+
+  List<Bill> _periodBills(AppStore store) {
+    final DateTime s = _start;
+    final DateTime e = _end;
+    return store.bills.where((Bill b) => _inRange(b.date, s, e)).toList();
+  }
+
+  List<Bill> _prevPeriodBills(AppStore store) {
+    final DateTime s = _start;
+    final DateTime e = _end;
+    final int days = e.difference(s).inDays + 1;
+    final DateTime ps = s.subtract(Duration(days: days));
+    final DateTime pe = s.subtract(const Duration(days: 1));
+    return store.bills.where((Bill b) => _inRange(b.date, ps, pe)).toList();
+  }
+
+  double _dayTotal(AppStore store, DateTime day, bool expense) {
+    double sum = 0;
+    for (final Bill b in store.bills) {
+      if (b.expense != expense) continue;
+      if (b.date.year == day.year && b.date.month == day.month && b.date.day == day.day) sum += b.amount;
+    }
+    return sum;
+  }
+
+  List<double> _trendValues(AppStore store, bool expense) {
+    final List<double> out = <double>[];
+    final DateTime s = _start;
+    switch (_period) {
+      case 0:
+        for (int i = 0; i < 7; i++) {
+          out.add(_dayTotal(store, s.add(Duration(days: i)), expense));
+        }
+        break;
+      case 2:
+        for (int i = 0; i < 3; i++) {
+          final DateTime m = DateTime(s.year, s.month + i, 1);
+          out.add(AppStore.total(AppStore.inMonth(store.bills, m), expense: expense));
+        }
+        break;
+      case 3:
+        for (int m = 1; m <= 12; m++) {
+          out.add(AppStore.total(AppStore.inMonth(store.bills, DateTime(s.year, m, 1)), expense: expense));
+        }
+        break;
+      default:
+        final int days = _end.day;
+        final int weeks = (days / 7).ceil();
+        for (int w = 0; w < weeks; w++) {
+          double sum = 0;
+          for (int d = w * 7 + 1; d <= (w + 1) * 7 && d <= days; d++) {
+            sum += _dayTotal(store, DateTime(s.year, s.month, d), expense);
+          }
+          out.add(sum);
+        }
+    }
+    return out;
+  }
+
+  List<String> _trendLabels() {
+    final DateTime s = _start;
+    switch (_period) {
+      case 0:
+        return <String>['一', '二', '三', '四', '五', '六', '日'];
+      case 2:
+        return List<String>.generate(3, (int i) => '${s.month + i}月');
+      case 3:
+        return List<String>.generate(12, (int i) => '${i + 1}');
+      default:
+        final int weeks = (_end.day / 7).ceil();
+        return List<String>.generate(weeks, (int i) => '${i + 1}周');
+    }
+  }
+
+  // ------------------------------------------------------------- UI
 
   @override
   Widget build(BuildContext context) {
@@ -56,22 +198,13 @@ class _StatsPageState extends State<StatsPage> {
     final AppStore store = AppScope.storeOf(context);
     final List<Bill> bills = _periodBills(store);
     final double total = AppStore.total(bills, expense: _expense);
+    final double prevTotal = AppStore.total(_prevPeriodBills(store), expense: _expense);
+    final double delta = prevTotal <= 0 ? 0 : (total - prevTotal) / prevTotal;
     final Map<String, double> byCat = AppStore.byCategory(bills, expense: _expense);
     final List<MapEntry<String, double>> ranked = byCat.entries.toList()
       ..sort((MapEntry<String, double> a, MapEntry<String, double> b) => b.value.compareTo(a.value));
 
     final List<DonutSlice> slices = <DonutSlice>[];
-    const List<Color> extraColors = <Color>[
-      Color(0xFFFF8A65),
-      Color(0xFF5C9DFF),
-      Color(0xFFFF6FA5),
-      Color(0xFF9B8CFF),
-      Color(0xFF4DB6AC),
-      Color(0xFFFFA726),
-      Color(0xFF26C6DA),
-      Color(0xFF90A4AE),
-    ];
-    int colorIdx = 0;
     for (final MapEntry<String, double> e in ranked.take(5)) {
       slices.add(DonutSlice(e.value, catById(e.key).color, catById(e.key).name));
     }
@@ -80,8 +213,12 @@ class _StatsPageState extends State<StatsPage> {
       for (final MapEntry<String, double> e in ranked.skip(5)) {
         rest += e.value;
       }
-      slices.add(DonutSlice(rest, extraColors[colorIdx++ % extraColors.length], '其他'));
+      slices.add(DonutSlice(rest, const Color(0xFFFFA726), '其他'));
     }
+
+    final List<double> trend = _trendValues(store, _expense);
+    final int days = _end.difference(_start).inDays + 1;
+    final int count = bills.where((Bill b) => b.expense == _expense).length;
 
     return SafeArea(
       bottom: false,
@@ -94,23 +231,29 @@ class _StatsPageState extends State<StatsPage> {
               Text('统计分析', style: T.h1(p).copyWith(fontSize: 24)),
               const Spacer(),
               Segmented(
-                labels: const <String>['月', '年'],
-                index: _yearMode ? 1 : 0,
+                labels: _periodNames,
+                index: _period,
                 compact: true,
+                segWidth: 40,
                 onChanged: (int i) {
+                  if (i == _period) return;
+                  HapticFeedback.selectionClick();
                   setState(() {
-                    _yearMode = i == 1;
+                    _period = i;
+                    _anchor = DateTime.now();
                     _selected = -1;
                   });
                 },
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _totalCard(p, total, bills),
+          const SizedBox(height: 14),
+          _periodBar(p),
+          const SizedBox(height: 12),
+          _totalCard(p, store, total, delta, count, days),
           const SizedBox(height: 14),
           SoftCard(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
             child: Column(
               children: <Widget>[
                 Row(
@@ -121,6 +264,7 @@ class _StatsPageState extends State<StatsPage> {
                       labels: const <String>['支出', '收入'],
                       index: _expense ? 0 : 1,
                       compact: true,
+                      segWidth: 46,
                       onChanged: (int i) {
                         setState(() {
                           _expense = i == 0;
@@ -130,7 +274,7 @@ class _StatsPageState extends State<StatsPage> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 if (slices.isEmpty)
                   const EmptyState(
                     title: '暂无数据',
@@ -139,17 +283,16 @@ class _StatsPageState extends State<StatsPage> {
                   )
                 else
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
                       DonutChart(
                         slices: slices,
-                        size: 158,
+                        size: 152,
                         stroke: 17,
                         selected: _selected,
                         onSelect: (int i) => setState(() => _selected = i),
-                        center: _donutCenter(p, slices, total),
+                        center: _donutCenter(p, store, slices, total),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           children: List<Widget>.generate(slices.length, (int i) {
@@ -204,7 +347,6 @@ class _StatsPageState extends State<StatsPage> {
                       ),
                     ],
                   ),
-                const SizedBox(height: 6),
               ],
             ),
           ),
@@ -227,17 +369,17 @@ class _StatsPageState extends State<StatsPage> {
                     const SizedBox(width: 8),
                     Text('消费趋势', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink)),
                     const Spacer(),
-                    Text(
-                      _yearMode ? '${_month.year}年' : '近 6 个月',
-                      style: TextStyle(fontSize: 11.5, color: p.ink3),
-                    ),
+                    Text('${_trendLabels().length} 个节点', style: TextStyle(fontSize: 11.5, color: p.ink3)),
                   ],
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 16),
                 TrendBars(
-                  values: _trendValues(store),
+                  values: trend,
                   labels: _trendLabels(),
-                  highlight: _trendValues(store).length - 1,
+                  height: 138,
+                  highlight: trend.isEmpty
+                      ? -1
+                      : trend.indexOf(trend.reduce((double a, double b) => a > b ? a : b)),
                 ),
               ],
             ),
@@ -251,7 +393,7 @@ class _StatsPageState extends State<StatsPage> {
                   children: <Widget>[
                     Text('分类排行', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink)),
                     const Spacer(),
-                    Text('TOP ${ranked.length.clamp(0, 6)}', style: TextStyle(fontSize: 11.5, color: p.ink3)),
+                    Text(ranked.isEmpty ? '' : '点击查看明细', style: TextStyle(fontSize: 11, color: p.ink3)),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -267,60 +409,71 @@ class _StatsPageState extends State<StatsPage> {
                     final int i = e.key;
                     final CategoryDef c = catById(e.value.key);
                     final double pct = total == 0 ? 0 : e.value.value / total;
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: Row(
-                        children: <Widget>[
-                          CatBubble(cat: c, size: 36, iconSize: 17),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Row(
-                                  children: <Widget>[
-                                    Text(
-                                      c.name,
-                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.ink),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Text(
-                                      '${(pct * 100).toStringAsFixed(1)}%',
-                                      style: TextStyle(fontSize: 10.5, color: p.ink3),
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      '¥${fmtAmount(e.value.value)}',
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: p.ink,
-                                        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                    return Pressable(
+                      onTap: () => _drillDown(context, store, c, bills),
+                      scale: 0.99,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 14),
+                        child: Row(
+                          children: <Widget>[
+                            CatBubble(cat: c, size: 36, iconSize: 17),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Row(
+                                    children: <Widget>[
+                                      Text(
+                                        c.name,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: p.ink,
+                                        ),
                                       ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 7),
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(4),
-                                  child: TweenAnimationBuilder<double>(
-                                    tween: Tween<double>(begin: 0, end: pct.clamp(0.0, 1.0)),
-                                    duration: Duration(milliseconds: 600 + i * 90),
-                                    curve: Curves.easeOutCubic,
-                                    builder: (BuildContext context, double v, Widget? _) {
-                                      return LinearProgressIndicator(
-                                        value: v,
-                                        minHeight: 5,
-                                        backgroundColor: p.dark ? Colors.white.withOpacity(0.06) : const Color(0xFFF1F1F7),
-                                        valueColor: AlwaysStoppedAnimation<Color>(c.color),
-                                      );
-                                    },
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '${(pct * 100).toStringAsFixed(1)}%',
+                                        style: TextStyle(fontSize: 10.5, color: p.ink3),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        store.money(e.value.value),
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: p.ink,
+                                          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      Icon(Icons.chevron_right_rounded, size: 15, color: p.ink3),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 7),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: TweenAnimationBuilder<double>(
+                                      tween: Tween<double>(begin: 0, end: pct.clamp(0.0, 1.0)),
+                                      duration: Duration(milliseconds: 600 + i * 90),
+                                      curve: Curves.easeOutCubic,
+                                      builder: (BuildContext context, double v, Widget? _) {
+                                        return LinearProgressIndicator(
+                                          value: v,
+                                          minHeight: 5,
+                                          backgroundColor:
+                                              p.dark ? Colors.white.withOpacity(0.06) : const Color(0xFFF1F1F7),
+                                          valueColor: AlwaysStoppedAnimation<Color>(c.color),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   }),
@@ -328,13 +481,95 @@ class _StatsPageState extends State<StatsPage> {
             ),
           ),
           const SizedBox(height: 14),
-          _insightCard(p, ranked, total),
+          Pressable(
+            onTap: () {
+              Navigator.of(context).push(PageRouteBuilder<bool>(
+                pageBuilder: (BuildContext c, Animation<double> a, Animation<double> s) => InsightPage(
+                  start: _start,
+                  end: _end,
+                  periodLabel: _label,
+                ),
+                transitionsBuilder: (BuildContext c, Animation<double> a, Animation<double> s, Widget child) {
+                  return FadeTransition(
+                    opacity: a,
+                    child: SlideTransition(
+                      position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
+                          .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+                      child: child,
+                    ),
+                  );
+                },
+              ));
+            },
+            scale: 0.99,
+            child: _insightCard(p, store, ranked, total),
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: Text(
+              '查看全部洞察 · 计算依据与关联账单',
+              style: TextStyle(fontSize: 11, color: p.ink3),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _donutCenter(Palette p, List<DonutSlice> slices, double total) {
+  Widget _periodBar(Palette p) {
+    return Row(
+      children: <Widget>[
+        Pressable(
+          onTap: () => _shift(-1),
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(11), boxShadow: p.shadow),
+            child: Icon(Icons.chevron_left_rounded, size: 20, color: p.ink2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: Text(
+              _label,
+              key: ValueKey<String>(_label),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: p.ink, letterSpacing: -0.2),
+            ),
+          ),
+        ),
+        if (!_isCurrent) ...<Widget>[
+          Pressable(
+            onTap: _backToCurrent,
+            child: Container(
+              height: 32,
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              margin: const EdgeInsets.only(right: 8),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: p.accent.withOpacity(0.10),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Text('回到本期', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.accent)),
+            ),
+          ),
+        ],
+        Pressable(
+          onTap: () => _shift(1),
+          child: Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(color: p.card, borderRadius: BorderRadius.circular(11), boxShadow: p.shadow),
+            child: Icon(Icons.chevron_right_rounded, size: 20, color: p.ink3),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _donutCenter(Palette p, AppStore store, List<DonutSlice> slices, double total) {
     if (_selected >= 0 && _selected < slices.length) {
       final DonutSlice s = slices[_selected];
       final double pct = total == 0 ? 0 : s.value / total * 100;
@@ -344,9 +579,9 @@ class _StatsPageState extends State<StatsPage> {
           Text(s.label, style: TextStyle(fontSize: 11.5, color: p.ink2, fontWeight: FontWeight.w500)),
           const SizedBox(height: 2),
           Text(
-            '¥${fmtAmount(s.value)}',
+            store.money(s.value),
             style: TextStyle(
-              fontSize: 17,
+              fontSize: 16,
               fontWeight: FontWeight.w700,
               color: p.ink,
               letterSpacing: -0.6,
@@ -364,9 +599,9 @@ class _StatsPageState extends State<StatsPage> {
         Text(_expense ? '总支出' : '总收入', style: TextStyle(fontSize: 11.5, color: p.ink2)),
         const SizedBox(height: 3),
         Text(
-          '¥${fmtAmount(total)}',
+          store.money(total),
           style: TextStyle(
-            fontSize: 19,
+            fontSize: 17,
             fontWeight: FontWeight.w700,
             color: p.ink,
             letterSpacing: -0.8,
@@ -379,10 +614,9 @@ class _StatsPageState extends State<StatsPage> {
     );
   }
 
-  Widget _totalCard(Palette p, double total, List<Bill> bills) {
-    final int count = bills.where((Bill b) => b.expense == _expense).length;
-    final int days = _yearMode ? 365 : DateTime(_month.year, _month.month + 1, 0).day;
-    final double avg = total / days;
+  Widget _totalCard(Palette p, AppStore store, double total, double delta, int count, int days) {
+    final double avg = days == 0 ? 0 : total / days;
+    final bool up = delta > 0;
     return SoftCard(
       gradient: p.dark
           ? const LinearGradient(
@@ -400,70 +634,42 @@ class _StatsPageState extends State<StatsPage> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              GestureDetector(
-                onTap: () => _shift(-1),
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(color: p.cardSoft, borderRadius: BorderRadius.circular(9)),
-                  child: Icon(Icons.chevron_left_rounded, size: 18, color: p.ink2),
-                ),
-              ),
-              const SizedBox(width: 8),
               Text(
-                _yearMode ? '${_month.year}年' : monthLabel(_month),
-                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: p.ink),
+                _expense ? '本期支出' : '本期收入',
+                style: TextStyle(fontSize: 12, color: p.ink2, fontWeight: FontWeight.w500),
               ),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _shift(1),
-                child: Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(color: p.cardSoft, borderRadius: BorderRadius.circular(9)),
-                  child: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: (up ? p.expense : p.income).withOpacity(0.10),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: Text(
+                  delta.abs() < 0.0001
+                      ? '环比持平'
+                      : '环比 ${up ? '↑' : '↓'}${(delta.abs() * 100).toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: up ? p.expense : p.income,
+                  ),
                 ),
               ),
               const Spacer(),
-              Text('共 $count 笔', style: TextStyle(fontSize: 11.5, color: p.ink3)),
+              Text('$count 笔', style: TextStyle(fontSize: 11.5, color: p.ink3)),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: <Widget>[
               Padding(
                 padding: const EdgeInsets.only(bottom: 5),
-                child: Text(
-                  '¥',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink2),
-                ),
+                child: Text('¥', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink2)),
               ),
               const SizedBox(width: 4),
-              Flexible(
-                child: AnimatedMoney(value: total, style: T.num(p, 34)),
-              ),
-              const SizedBox(width: 10),
-              Padding(
-                padding: const EdgeInsets.only(bottom: 5),
-                child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: (_expense ? p.expense : p.income).withOpacity(0.10),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  _expense ? '支出' : '收入',
-                  style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: _expense ? p.expense : p.income,
-                  ),
-                ),
-              ),
-              ),
+              Flexible(child: AnimatedMoney(value: total, style: T.num(p, 34))),
             ],
           ),
           const SizedBox(height: 8),
@@ -471,10 +677,9 @@ class _StatsPageState extends State<StatsPage> {
             children: <Widget>[
               Icon(Icons.insights_rounded, size: 12, color: p.ink3),
               const SizedBox(width: 4),
-              Text(
-                '日均 ¥${fmtAmount(avg)}',
-                style: TextStyle(fontSize: 11.5, color: p.ink2),
-              ),
+              Text('日均 ${store.money(avg)}', style: TextStyle(fontSize: 11.5, color: p.ink2)),
+              const Spacer(),
+              Text('共 $days 天', style: TextStyle(fontSize: 11, color: p.ink3)),
             ],
           ),
         ],
@@ -482,36 +687,7 @@ class _StatsPageState extends State<StatsPage> {
     );
   }
 
-  List<double> _trendValues(AppStore store) {
-    if (_yearMode) {
-      final List<double> out = <double>[];
-      for (int m = 1; m <= 12; m++) {
-        final DateTime mm = DateTime(_month.year, m, 1);
-        out.add(AppStore.total(AppStore.inMonth(store.bills, mm), expense: true));
-      }
-      return out;
-    }
-    final List<double> out = <double>[];
-    for (int i = 5; i >= 0; i--) {
-      final DateTime mm = DateTime(_month.year, _month.month - i, 1);
-      out.add(AppStore.total(AppStore.inMonth(store.bills, mm), expense: true));
-    }
-    return out;
-  }
-
-  List<String> _trendLabels() {
-    if (_yearMode) {
-      return List<String>.generate(12, (int i) => '${i + 1}');
-    }
-    final List<String> out = <String>[];
-    for (int i = 5; i >= 0; i--) {
-      final DateTime mm = DateTime(_month.year, _month.month - i, 1);
-      out.add('${mm.month}月');
-    }
-    return out;
-  }
-
-  Widget _insightCard(Palette p, List<MapEntry<String, double>> ranked, double total) {
+  Widget _insightCard(Palette p, AppStore store, List<MapEntry<String, double>> ranked, double total) {
     if (ranked.isEmpty) return const SizedBox.shrink();
     final CategoryDef top = catById(ranked.first.key);
     final double pct = total == 0 ? 0 : ranked.first.value / total * 100;
@@ -546,10 +722,10 @@ class _StatsPageState extends State<StatsPage> {
                         text: top.name,
                         style: TextStyle(color: top.color, fontWeight: FontWeight.w700),
                       ),
-                      TextSpan(text: '」是你的最大开销项，共 ¥${fmtAmount(ranked.first.value)}，占比 ${pct.toStringAsFixed(1)}%。'),
                       TextSpan(
-                        text: pct > 45 ? ' 稍微控制一下会更好哦～' : ' 保持得不错，继续加油！',
+                        text: '」是你的最大开销项，共 ${store.money(ranked.first.value)}，占比 ${pct.toStringAsFixed(1)}%。',
                       ),
+                      TextSpan(text: pct > 45 ? ' 稍微控制一下会更好哦～' : ' 保持得不错，继续加油！'),
                     ],
                   ),
                 ),
@@ -558,6 +734,123 @@ class _StatsPageState extends State<StatsPage> {
           ),
         ],
       ),
+    );
+  }
+
+  void _drillDown(BuildContext context, AppStore store, CategoryDef cat, List<Bill> periodBills) {
+    final List<Bill> items = periodBills
+        .where((Bill b) => b.catId == cat.id && b.expense == _expense)
+        .toList()
+      ..sort((Bill a, Bill b) => b.date.compareTo(a.date));
+    final double sum = AppStore.total(items, expense: _expense);
+    HapticFeedback.selectionClick();
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) {
+        final Palette p = AppScope.paletteOf(ctx);
+        return Container(
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+          decoration: BoxDecoration(
+            color: p.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Container(
+                margin: const EdgeInsets.only(top: 12),
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                child: Row(
+                  children: <Widget>[
+                    CatBubble(cat: cat, size: 44, iconSize: 21),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(cat.name, style: T.h2(p).copyWith(fontSize: 17)),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${items.length} 笔 · ${store.money(sum)}',
+                          style: TextStyle(fontSize: 11.5, color: p.ink2),
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Pressable(
+                      onTap: () => Navigator.pop(ctx),
+                      child: Container(
+                        width: 30,
+                        height: 30,
+                        decoration: BoxDecoration(color: p.cardSoft, borderRadius: BorderRadius.circular(15)),
+                        child: Icon(Icons.close_rounded, size: 16, color: p.ink2),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Divider(height: 1, color: p.line),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  itemCount: items.length,
+                  separatorBuilder: (BuildContext c, int i) => Divider(height: 1, color: p.line),
+                  itemBuilder: (BuildContext c, int i) {
+                    final Bill b = items[i];
+                    return Pressable(
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        final bool? ok = await showBillSheet(context, bill: b);
+                        if (ok == true && mounted) showToast(context, '账单已更新');
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Row(
+                          children: <Widget>[
+                            Text(
+                              '${b.date.month}/${b.date.day}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: p.ink3,
+                                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                b.note.isEmpty ? cat.name : b.note,
+                                style: TextStyle(fontSize: 13, color: p.ink, fontWeight: FontWeight.w500),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              store.money(b.amount),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: p.ink,
+                                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

@@ -239,8 +239,10 @@ class _TrendBarsState extends State<TrendBars> with SingleTickerProviderStateMix
                         ),
                       ),
                       const SizedBox(height: 5),
-                      Container(
-                        height: h < 4 ? 4 : h,
+                      FractionallySizedBox(
+                        widthFactor: 0.62,
+                        child: Container(
+                        height: h < 4 ? 5 : h,
                         decoration: BoxDecoration(
                           gradient: hot ? p.gradient : null,
                           color: hot ? null : p.accent.withOpacity(p.dark ? 0.28 : 0.16),
@@ -251,6 +253,7 @@ class _TrendBarsState extends State<TrendBars> with SingleTickerProviderStateMix
                                 ]
                               : null,
                         ),
+                      ),
                       ),
                       const SizedBox(height: 8),
                       Text(

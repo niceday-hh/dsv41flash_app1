@@ -130,6 +130,21 @@ class SettingsPage extends StatelessWidget {
                 Divider(height: 1, color: p.line),
                 _tile(
                   p,
+                  icon: Icons.visibility_off_rounded,
+                  color: const Color(0xFF7E8CE0),
+                  title: '隐藏金额',
+                  subtitle: '公共场合保护隐私',
+                  trailing: _IosSwitch(
+                    value: store.hideAmounts,
+                    onChanged: (bool v) {
+                      HapticFeedback.selectionClick();
+                      store.setHideAmounts(v);
+                    },
+                  ),
+                ),
+                Divider(height: 1, color: p.line),
+                _tile(
+                  p,
                   icon: Icons.account_circle_rounded,
                   color: const Color(0xFF7E8CE0),
                   title: '昵称',
@@ -157,6 +172,16 @@ class SettingsPage extends StatelessWidget {
                     await Clipboard.setData(ClipboardData(text: store.exportCsv()));
                     if (ctxMounted(context)) showToast(context, 'CSV 已复制到剪贴板', icon: Icons.copy_rounded);
                   },
+                ),
+                Divider(height: 1, color: p.line),
+                _tile(
+                  p,
+                  icon: Icons.upload_file_rounded,
+                  color: const Color(0xFF14C08A),
+                  title: '导入账单',
+                  subtitle: '粘贴 CSV 文本，自动识别分类',
+                  trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
+                  onTap: () => _importCsv(context, store),
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(
@@ -435,6 +460,87 @@ class SettingsPage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _importCsv(BuildContext context, AppStore store) async {
+    final TextEditingController ctrl = TextEditingController();
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) {
+        final Palette p = AppScope.paletteOf(ctx);
+        return AlertDialog(
+          backgroundColor: p.card,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+          title: Text('导入账单', style: T.h2(p).copyWith(fontSize: 17)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  '表头需包含：日期,类型,分类,金额,备注',
+                  style: TextStyle(fontSize: 11.5, color: p.ink3, height: 1.5),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  height: 130,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(color: p.cardSoft, borderRadius: BorderRadius.circular(14)),
+                  child: TextField(
+                    controller: ctrl,
+                    maxLines: null,
+                    expands: true,
+                    style: TextStyle(fontSize: 11.5, color: p.ink, height: 1.5),
+                    cursorColor: p.accent,
+                    decoration: InputDecoration(
+                      border: InputBorder.none,
+                      hintText: '日期,类型,分类,金额,备注\n2026/10/1 12:30,支出,餐饮,28,午饭',
+                      hintStyle: TextStyle(fontSize: 11, color: p.ink3),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: () async {
+                    final ClipboardData? data = await Clipboard.getData(Clipboard.kTextPlain);
+                    if (data?.text != null) ctrl.text = data!.text!;
+                  },
+                  child: Row(
+                    children: <Widget>[
+                      Icon(Icons.content_paste_rounded, size: 14, color: p.accent),
+                      const SizedBox(width: 5),
+                      Text('从剪贴板粘贴', style: TextStyle(fontSize: 12, color: p.accent, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text('取消', style: TextStyle(color: p.ink2, fontWeight: FontWeight.w600)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('导入', style: TextStyle(color: p.accent, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        );
+      },
+    );
+    if (ok == true) {
+      try {
+        final int n = store.importCsv(ctrl.text);
+        if (ctxMounted(context)) {
+          showToast(context, n > 0 ? '成功导入 $n 笔账单' : '没有可导入的数据',
+              icon: n > 0 ? Icons.check_circle_rounded : Icons.info_rounded);
+        }
+      } catch (e) {
+        if (ctxMounted(context)) showToast(context, '导入失败：格式不正确', icon: Icons.error_outline_rounded);
+      }
+    }
   }
 
   Future<void> _editName(BuildContext context, AppStore store) async {

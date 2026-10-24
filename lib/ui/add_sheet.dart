@@ -9,47 +9,69 @@ import '../store.dart';
 import '../theme.dart';
 import 'common.dart';
 
-Future<bool?> showAddBillSheet(BuildContext context, {bool expense = true, String? catId}) {
+/// 打开记账 / 编辑账单面板。传入 [bill] 即为编辑模式。
+Future<bool?> showBillSheet(BuildContext context, {Bill? bill, bool expense = true, String? catId}) {
   final AppStore store = AppScope.storeOf(context);
   return showModalBottomSheet<bool>(
     context: context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withOpacity(0.38),
-    builder: (BuildContext ctx) => _AddBillSheet(
+    builder: (BuildContext ctx) => _BillSheet(
       store: store,
-      initialExpense: expense,
-      initialCatId: catId,
+      bill: bill,
+      initialExpense: bill?.expense ?? expense,
+      initialCatId: bill?.catId ?? catId,
     ),
   );
 }
 
-class _AddBillSheet extends StatefulWidget {
+Future<bool?> showAddBillSheet(BuildContext context, {bool expense = true, String? catId}) =>
+    showBillSheet(context, expense: expense, catId: catId);
+
+class _BillSheet extends StatefulWidget {
   final AppStore store;
+  final Bill? bill;
   final bool initialExpense;
   final String? initialCatId;
 
-  const _AddBillSheet({Key? key, required this.store, required this.initialExpense, this.initialCatId})
-      : super(key: key);
+  const _BillSheet({
+    Key? key,
+    required this.store,
+    this.bill,
+    required this.initialExpense,
+    this.initialCatId,
+  }) : super(key: key);
 
   @override
-  State<_AddBillSheet> createState() => _AddBillSheetState();
+  State<_BillSheet> createState() => _BillSheetState();
 }
 
-class _AddBillSheetState extends State<_AddBillSheet> {
+class _BillSheetState extends State<_BillSheet> {
   late bool _expense;
-  String _amount = '';
+  String _expr = '';
   String _catId = '';
   late DateTime _date;
-  final TextEditingController _noteCtrl = TextEditingController();
+  late TextEditingController _noteCtrl;
   bool _saving = false;
+  bool _evaluated = false;
+
+  bool get _editing => widget.bill != null;
 
   @override
   void initState() {
     super.initState();
-    _expense = widget.initialExpense;
-    _catId = widget.initialCatId ?? catsFor(_expense).first.id;
-    _date = DateTime.now();
+    final Bill? b = widget.bill;
+    _expense = b?.expense ?? widget.initialExpense;
+    _catId = b?.catId ?? widget.initialCatId ?? catsFor(_expense).first.id;
+    _date = b?.date ?? DateTime.now();
+    _noteCtrl = TextEditingController(text: b?.note ?? '');
+    if (b != null) {
+      _expr = b.amount == b.amount.roundToDouble()
+          ? b.amount.toStringAsFixed(0)
+          : b.amount.toStringAsFixed(2);
+      _evaluated = true;
+    }
   }
 
   @override
@@ -58,43 +80,128 @@ class _AddBillSheetState extends State<_AddBillSheet> {
     super.dispose();
   }
 
-  double get _value => double.tryParse(_amount.isEmpty ? '0' : _amount) ?? 0;
+  // ------------------------------------------------------------ 表达式计算
+
+  double get _value => _calc(_expr);
+
+  static double _calc(String src) {
+    if (src.isEmpty) return 0;
+    double sum = 0;
+    double sign = 1;
+    final StringBuffer num = StringBuffer();
+    for (int i = 0; i < src.length; i++) {
+      final String ch = src[i];
+      if (ch == '+' || ch == '-') {
+        if (num.isNotEmpty) {
+          sum += sign * (double.tryParse(num.toString()) ?? 0);
+          num.clear();
+        }
+        sign = ch == '+' ? 1 : -1;
+      } else {
+        num.write(ch);
+      }
+    }
+    if (num.isNotEmpty) sum += sign * (double.tryParse(num.toString()) ?? 0);
+    return sum;
+  }
+
+  static bool _isOp(String ch) => ch == '+' || ch == '-';
 
   void _press(String k) {
     HapticFeedback.lightImpact();
     setState(() {
       if (k == 'del') {
-        if (_amount.isNotEmpty) _amount = _amount.substring(0, _amount.length - 1);
+        if (_expr.isNotEmpty) _expr = _expr.substring(0, _expr.length - 1);
+        _evaluated = false;
+        return;
+      }
+      if (k == 'C') {
+        _expr = '';
+        _evaluated = false;
+        return;
+      }
+      if (k == '=') {
+        final double v = _value;
+        _expr = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+        _evaluated = true;
+        return;
+      }
+      if (_evaluated && !_isOp(k)) {
+        _expr = '';
+        _evaluated = false;
+      }
+      if (_isOp(k)) {
+        if (_expr.isEmpty) return;
+        if (_isOp(_expr[_expr.length - 1])) {
+          _expr = _expr.substring(0, _expr.length - 1) + k;
+          return;
+        }
+        _evaluated = false;
+        _expr += k;
         return;
       }
       if (k == '.') {
-        if (_amount.contains('.')) return;
-        _amount = _amount.isEmpty ? '0.' : '$_amount.';
+        final String tail = _expr.split(RegExp(r'[+-]')).last;
+        if (tail.contains('.')) return;
+        _expr = _expr.isEmpty || _isOp(_expr[_expr.length - 1]) ? '${_expr}0.' : '$_expr.';
         return;
       }
-      if (_amount.contains('.') && _amount.split('.')[1].length >= 2) return;
-      if (_amount == '0') _amount = k;
-      else if (_amount.replaceAll('.', '').length >= 8) return;
-      else _amount += k;
+      final String tail = _expr.split(RegExp(r'[+-]')).last;
+      if (tail.contains('.') && tail.split('.')[1].length >= 2) return;
+      if (tail.replaceAll('.', '').length >= 8) return;
+      if (tail == '0') {
+        _expr = _expr.substring(0, _expr.length - 1) + k;
+        return;
+      }
+      _expr += k;
     });
   }
 
-  void _save() {
-    if (_value <= 0) {
+  // ------------------------------------------------------------ 保存
+
+  Future<void> _save() async {
+    final double v = _value;
+    if (v <= 0) {
       HapticFeedback.heavyImpact();
       showToast(context, '请输入金额', icon: Icons.info_rounded);
       return;
     }
     setState(() => _saving = true);
-    widget.store.addBill(Bill(
-      id: 'bill_${DateTime.now().microsecondsSinceEpoch}',
-      catId: _catId,
-      amount: double.parse(_value.toStringAsFixed(2)),
-      expense: _expense,
-      date: DateTime(_date.year, _date.month, _date.day, DateTime.now().hour, DateTime.now().minute),
-      note: _noteCtrl.text.trim(),
-    ));
-    Navigator.of(context).pop(true);
+    final String note = _noteCtrl.text.trim();
+    final DateTime when = DateTime(
+      _date.year,
+      _date.month,
+      _date.day,
+      _editing ? widget.bill!.date.hour : DateTime.now().hour,
+      _editing ? widget.bill!.date.minute : DateTime.now().minute,
+    );
+    if (_editing) {
+      widget.store.updateBill(Bill(
+        id: widget.bill!.id,
+        catId: _catId,
+        amount: double.parse(v.toStringAsFixed(2)),
+        expense: _expense,
+        date: when,
+        note: note,
+      ));
+    } else {
+      widget.store.addBill(Bill(
+        id: 'bill_${DateTime.now().microsecondsSinceEpoch}',
+        catId: _catId,
+        amount: double.parse(v.toStringAsFixed(2)),
+        expense: _expense,
+        date: when,
+        note: note,
+      ));
+    }
+    if (mounted) Navigator.of(context).pop(true);
+  }
+
+  Future<void> _delete() async {
+    final bool ok = await _confirmDelete(context);
+    if (!ok || !mounted) return;
+    widget.store.removeBill(widget.bill!.id);
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   Future<void> _pickDate() async {
@@ -103,12 +210,6 @@ class _AddBillSheetState extends State<_AddBillSheet> {
       initialDate: _date,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      builder: (BuildContext context, Widget? child) {
-        return Theme(
-          data: Theme.of(context).copyWith(colorScheme: Theme.of(context).colorScheme),
-          child: child!,
-        );
-      },
     );
     if (d != null) setState(() => _date = d);
   }
@@ -118,6 +219,8 @@ class _AddBillSheetState extends State<_AddBillSheet> {
     final Palette p = AppScope.paletteOf(context);
     final double maxH = MediaQuery.of(context).size.height * 0.92;
     final List<CategoryDef> cats = catsFor(_expense);
+    final bool hasOp = _expr.contains('+') || _expr.contains('-');
+    final List<String> notes = widget.store.notesForCategory(_catId, expense: _expense, limit: 6);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -130,16 +233,12 @@ class _AddBillSheetState extends State<_AddBillSheet> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            // 拖拽条
             Padding(
               padding: const EdgeInsets.only(top: 10, bottom: 2),
               child: Container(
                 width: 40,
                 height: 5,
-                decoration: BoxDecoration(
-                  color: p.line,
-                  borderRadius: BorderRadius.circular(3),
-                ),
+                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
               ),
             ),
             Flexible(
@@ -150,8 +249,22 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                   children: <Widget>[
                     Row(
                       children: <Widget>[
-                        Text('记一笔', style: T.h2(p)),
+                        Text(_editing ? '编辑账单' : '记一笔', style: T.h2(p)),
                         const Spacer(),
+                        if (_editing)
+                          Pressable(
+                            onTap: _delete,
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: p.expense.withOpacity(0.10),
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              child: Icon(Icons.delete_outline_rounded, size: 16, color: p.expense),
+                            ),
+                          ),
                         Segmented(
                           labels: const <String>['支出', '收入'],
                           index: _expense ? 0 : 1,
@@ -178,26 +291,26 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    // 金额
+                    const SizedBox(height: 12),
+                    // 金额 / 表达式
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: <Widget>[
                         Padding(
                           padding: const EdgeInsets.only(bottom: 6),
                           child: Text(
-                          '¥',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w600,
-                            color: _expense ? p.expense : p.income,
+                            '¥',
+                            style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                              color: _expense ? p.expense : p.income,
+                            ),
                           ),
-                        ),
                         ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: AnimatedSwitcher(
-                            duration: const Duration(milliseconds: 160),
+                            duration: const Duration(milliseconds: 150),
                             layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
                               alignment: Alignment.centerLeft,
                               children: <Widget>[
@@ -205,41 +318,40 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                                 if (current != null) current,
                               ],
                             ),
-                            transitionBuilder: (Widget child, Animation<double> a) =>
-                                FadeTransition(opacity: a, child: child),
                             child: Text(
-                              _amount.isEmpty ? '0.00' : _amount,
-                              key: ValueKey<String>(_amount),
+                              _expr.isEmpty ? '0.00' : _expr,
+                              key: ValueKey<String>(_expr),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 40,
+                                fontSize: _expr.length > 9 ? 32 : 40,
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -1.6,
                                 height: 1.1,
-                                color: _amount.isEmpty ? p.ink3 : p.ink,
+                                color: _expr.isEmpty ? p.ink3 : p.ink,
                                 fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
                               ),
                             ),
                           ),
                         ),
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 220),
-                          child: Text(
-                            _expense ? '支出' : '收入',
-                            key: ValueKey<bool>(_expense),
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: _expense ? p.expense : p.income,
+                        if (hasOp)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8, left: 6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: p.accent.withOpacity(0.10),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Text(
+                                '= ${fmtMoney(_value)}',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.accent),
+                              ),
                             ),
                           ),
-                        ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    // 备注 + 日期
                     Row(
                       children: <Widget>[
                         Expanded(
@@ -290,10 +402,53 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 14),
-                    // 分类网格
+                    if (notes.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: 26,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: notes.length,
+                          separatorBuilder: (BuildContext c, int i) => const SizedBox(width: 7),
+                          itemBuilder: (BuildContext context, int i) {
+                            final bool on = _noteCtrl.text == notes[i];
+                            return GestureDetector(
+                              onTap: () {
+                                HapticFeedback.selectionClick();
+                                setState(() {
+                                  _noteCtrl.text = _noteCtrl.text == notes[i] ? '' : notes[i];
+                                  _noteCtrl.selection =
+                                      TextSelection.collapsed(offset: _noteCtrl.text.length);
+                                });
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: on ? p.accent.withOpacity(0.12) : p.cardSoft,
+                                  borderRadius: BorderRadius.circular(13),
+                                  border: Border.all(
+                                    color: on ? p.accent.withOpacity(0.4) : Colors.transparent,
+                                  ),
+                                ),
+                                child: Text(
+                                  notes[i],
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                                    color: on ? p.accent : p.ink2,
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 12),
                     SizedBox(
-                      height: 262,
+                      height: 246,
                       child: GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
@@ -301,7 +456,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                           crossAxisCount: 4,
                           mainAxisSpacing: 6,
                           crossAxisSpacing: 8,
-                          childAspectRatio: 1.02,
+                          childAspectRatio: 1.18,
                         ),
                         itemCount: cats.length,
                         itemBuilder: (BuildContext context, int i) {
@@ -315,7 +470,6 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                             behavior: HitTestBehavior.opaque,
                             child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeOut,
                               decoration: BoxDecoration(
                                 color: on ? c.color.withOpacity(0.10) : Colors.transparent,
                                 borderRadius: BorderRadius.circular(16),
@@ -331,11 +485,11 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                                     scale: on ? 1.08 : 1,
                                     duration: const Duration(milliseconds: 200),
                                     child: Container(
-                                      width: 38,
-                                      height: 38,
+                                      width: 36,
+                                      height: 36,
                                       decoration: BoxDecoration(
                                         color: on ? c.color : c.color.withOpacity(p.dark ? 0.18 : 0.13),
-                                        borderRadius: BorderRadius.circular(13),
+                                        borderRadius: BorderRadius.circular(12),
                                         boxShadow: on
                                             ? <BoxShadow>[
                                                 BoxShadow(
@@ -346,14 +500,14 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                                               ]
                                             : null,
                                       ),
-                                      child: Icon(c.icon, size: 19, color: on ? Colors.white : c.color),
+                                      child: Icon(c.icon, size: 18, color: on ? Colors.white : c.color),
                                     ),
                                   ),
-                                  const SizedBox(height: 5),
+                                  const SizedBox(height: 4),
                                   Text(
                                     c.name,
                                     style: TextStyle(
-                                      fontSize: 10.5,
+                                      fontSize: 10,
                                       fontWeight: on ? FontWeight.w700 : FontWeight.w500,
                                       color: on ? c.color : p.ink2,
                                     ),
@@ -369,7 +523,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                 ),
               ),
             ),
-            // 数字键盘
+            // 数字键盘（支持 + − 计算）
             Container(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
               decoration: BoxDecoration(
@@ -380,10 +534,10 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                 top: false,
                 child: Column(
                   children: <Widget>[
-                    _row(<String>['1', '2', '3']),
-                    _row(<String>['4', '5', '6']),
-                    _row(<String>['7', '8', '9']),
-                    _row(<String>['.', '0', 'del']),
+                    _keyRow(p, <String>['1', '2', '3', 'del']),
+                    _keyRow(p, <String>['4', '5', '6', '+']),
+                    _keyRow(p, <String>['7', '8', '9', '-']),
+                    _keyRow(p, <String>['.', '0', 'C', '=']),
                     const SizedBox(height: 8),
                     Pressable(
                       onTap: _save,
@@ -402,7 +556,7 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                               )
                             : Text(
-                                '保存 · ¥${_value <= 0 ? '0.00' : _value.toStringAsFixed(2)}',
+                                '${_editing ? '保存修改' : '保存'} · ¥${fmtMoney(_value)}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 15,
@@ -422,13 +576,13 @@ class _AddBillSheetState extends State<_AddBillSheet> {
     );
   }
 
-  Widget _row(List<String> keys) {
-    final Palette p = AppScope.paletteOf(context);
+  Widget _keyRow(Palette p, List<String> keys) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 7),
       child: Row(
         children: keys.map((String k) {
-          final bool del = k == 'del';
+          final bool fn = k == 'del' || k == 'C' || k == '=' || k == '+' || k == '-';
+          final bool accent = k == '=' || k == '+';
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -439,9 +593,9 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                   height: 46,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: del ? Colors.transparent : p.card,
+                    color: accent ? p.accent.withOpacity(0.10) : (fn ? Colors.transparent : p.card),
                     borderRadius: BorderRadius.circular(14),
-                    boxShadow: del
+                    boxShadow: fn
                         ? null
                         : <BoxShadow>[
                             BoxShadow(
@@ -451,14 +605,14 @@ class _AddBillSheetState extends State<_AddBillSheet> {
                             ),
                           ],
                   ),
-                  child: del
+                  child: k == 'del'
                       ? Icon(Icons.backspace_outlined, size: 19, color: p.ink2)
                       : Text(
                           k,
                           style: TextStyle(
-                            fontSize: 21,
+                            fontSize: k == 'C' || k == '=' ? 18 : 21,
                             fontWeight: FontWeight.w600,
-                            color: p.ink,
+                            color: accent ? p.accent : (fn ? p.ink2 : p.ink),
                             letterSpacing: -0.5,
                           ),
                         ),
@@ -470,4 +624,28 @@ class _AddBillSheetState extends State<_AddBillSheet> {
       ),
     );
   }
+}
+
+Future<bool> _confirmDelete(BuildContext context) async {
+  final Palette p = AppScope.paletteOf(context);
+  final bool? ok = await showDialog<bool>(
+    context: context,
+    builder: (BuildContext ctx) => AlertDialog(
+      backgroundColor: p.card,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      title: Text('删除这笔账单？', style: T.h2(p).copyWith(fontSize: 17)),
+      content: Text('删除后无法恢复。', style: TextStyle(fontSize: 13, color: p.ink2, height: 1.5)),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: Text('取消', style: TextStyle(color: p.ink2, fontWeight: FontWeight.w600)),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: Text('删除', style: TextStyle(color: p.expense, fontWeight: FontWeight.w700)),
+        ),
+      ],
+    ),
+  );
+  return ok ?? false;
 }

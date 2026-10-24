@@ -87,6 +87,7 @@ String timeLabel(DateTime d) {
 class Pressable extends StatefulWidget {
   final Widget child;
   final VoidCallback? onTap;
+  final VoidCallback? onLongPress;
   final double scale;
   final bool tapEnabled;
 
@@ -94,6 +95,7 @@ class Pressable extends StatefulWidget {
     Key? key,
     required this.child,
     this.onTap,
+    this.onLongPress,
     this.scale = 0.96,
     this.tapEnabled = true,
   }) : super(key: key);
@@ -117,6 +119,12 @@ class _PressableState extends State<Pressable> {
       onTapDown: widget.tapEnabled ? (_) => _set(true) : null,
       onTapUp: widget.tapEnabled ? (_) => _set(false) : null,
       onTapCancel: widget.tapEnabled ? () => _set(false) : null,
+      onLongPress: widget.onLongPress == null
+          ? null
+          : () {
+              HapticFeedback.mediumImpact();
+              widget.onLongPress!();
+            },
       onTap: widget.onTap == null
           ? null
           : () {
@@ -255,6 +263,9 @@ class AnimatedMoney extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (AppScope.storeOf(context).hideAmounts) {
+      return Text('$prefix••••', style: style);
+    }
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: value),
       duration: duration,
@@ -303,13 +314,9 @@ class Segmented extends StatelessWidget {
           AnimatedAlign(
             duration: const Duration(milliseconds: 280),
             curve: Curves.easeOutCubic,
-            alignment: labels.length == 2
-                ? (index == 0 ? Alignment.centerLeft : Alignment.centerRight)
-                : (index == 0
-                    ? Alignment.centerLeft
-                    : index == 1
-                        ? Alignment.center
-                        : Alignment.centerRight),
+            alignment: labels.length <= 1
+                ? Alignment.center
+                : Alignment(-1 + 2 * index / (labels.length - 1), 0),
             child: Container(
               width: cellW,
               height: h - 6,

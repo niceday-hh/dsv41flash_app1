@@ -8,6 +8,8 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../ui/add_sheet.dart';
+import 'calendar_page.dart';
+import 'search_page.dart';
 import '../ui/common.dart';
 
 class HomePage extends StatefulWidget {
@@ -101,6 +103,22 @@ class _HomePageState extends State<HomePage> {
           const SizedBox(height: 22),
           SectionTitle(
             title: _isCurrentMonth ? '本月账单' : '${_month.month}月账单',
+            action: '日历',
+            onAction: () {
+              Navigator.of(context).push(PageRouteBuilder<bool>(
+                pageBuilder: (BuildContext c, Animation<double> a, Animation<double> s) => const CalendarPage(),
+                transitionsBuilder: (BuildContext c, Animation<double> a, Animation<double> s, Widget child) {
+                  return FadeTransition(
+                    opacity: a,
+                    child: SlideTransition(
+                      position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
+                          .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+                      child: child,
+                    ),
+                  );
+                },
+              ));
+            },
             trailing: Row(
               children: <Widget>[
                 Text(
@@ -154,29 +172,51 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         Pressable(
-          onTap: () => showToast(context, '暂无新消息', icon: Icons.notifications_active_rounded),
+          onTap: () {
+            Navigator.of(context).push(PageRouteBuilder<bool>(
+              pageBuilder: (BuildContext c, Animation<double> a, Animation<double> s) => const SearchPage(),
+              transitionsBuilder: (BuildContext c, Animation<double> a, Animation<double> s, Widget child) {
+                return FadeTransition(
+                  opacity: a,
+                  child: SlideTransition(
+                    position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
+                        .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+                    child: child,
+                  ),
+                );
+              },
+            ));
+          },
           child: Container(
             width: 40,
             height: 40,
+            margin: const EdgeInsets.only(right: 10),
             decoration: BoxDecoration(
               color: p.card,
               borderRadius: BorderRadius.circular(14),
               boxShadow: p.shadow,
             ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: <Widget>[
-                Icon(Icons.notifications_none_rounded, size: 20, color: p.ink2),
-                Positioned(
-                  right: 11,
-                  top: 11,
-                  child: Container(
-                    width: 6,
-                    height: 6,
-                    decoration: BoxDecoration(color: p.expense, shape: BoxShape.circle),
-                  ),
-                ),
-              ],
+            child: Icon(Icons.search_rounded, size: 20, color: p.ink2),
+          ),
+        ),
+        Pressable(
+          onTap: () {
+            HapticFeedback.selectionClick();
+            AppScope.storeOf(context).setHideAmounts(!AppScope.storeOf(context).hideAmounts);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 220),
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppScope.storeOf(context).hideAmounts ? p.accent.withOpacity(0.12) : p.card,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: p.shadow,
+            ),
+            child: Icon(
+              AppScope.storeOf(context).hideAmounts ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+              size: 19,
+              color: AppScope.storeOf(context).hideAmounts ? p.accent : p.ink2,
             ),
           ),
         ),
@@ -329,7 +369,7 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const Spacer(),
                       Text(
-                        '日均 ¥${fmtAmount(dailyAvg)}',
+                        '日均 ${AppScope.storeOf(context).money(dailyAvg)}',
                         style: TextStyle(
                           fontSize: 11.5,
                           color: Colors.white.withOpacity(0.85),
@@ -384,7 +424,7 @@ class _HomePageState extends State<HomePage> {
           ),
           const SizedBox(height: 4),
           Text(
-            isCount ? '${value.toInt()}' : '¥${fmtAmount(value)}',
+            isCount ? '${value.toInt()}' : AppScope.storeOf(context).money(value),
             style: const TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w700,
@@ -516,13 +556,13 @@ class _HomePageState extends State<HomePage> {
                 const Spacer(),
                 if (g.expense > 0)
                   Text(
-                    '支 ¥${fmtAmount(g.expense)}',
+                    '支 ${AppScope.storeOf(context).money(g.expense)}',
                     style: TextStyle(fontSize: 11, color: p.ink2, fontWeight: FontWeight.w600),
                   ),
                 if (g.expense > 0 && g.income > 0) const SizedBox(width: 8),
                 if (g.income > 0)
                   Text(
-                    '收 ¥${fmtAmount(g.income)}',
+                    '收 ${AppScope.storeOf(context).money(g.income)}',
                     style: TextStyle(fontSize: 11, color: p.income, fontWeight: FontWeight.w600),
                   ),
               ],
@@ -565,7 +605,7 @@ class _HomePageState extends State<HomePage> {
       ),
       confirmDismiss: (DismissDirection _) async {
         HapticFeedback.mediumImpact();
-        return true;
+        return _confirmDelete(context);
       },
       onDismissed: (DismissDirection _) {
         final Bill? removed = store.removeBill(b.id);
@@ -575,7 +615,8 @@ class _HomePageState extends State<HomePage> {
       },
       child: Pressable(
         scale: 0.99,
-        onTap: () => _showBillDetail(b),
+        onTap: () => _openEdit(b),
+        onLongPress: () => _showActions(b),
         child: Container(
           color: Colors.transparent,
           padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
@@ -603,7 +644,7 @@ class _HomePageState extends State<HomePage> {
               ),
               const SizedBox(width: 8),
               Text(
-                '${b.expense ? '-' : '+'}¥${fmtMoney(b.amount)}',
+                '${b.expense ? '-' : '+'}${store.money(b.amount)}',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -619,16 +660,21 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  void _showBillDetail(Bill b) {
+  Future<void> _openEdit(Bill b) async {
+    final bool? ok = await showBillSheet(context, bill: b);
+    if (ok == true && mounted) showToast(context, '账单已更新');
+  }
+
+  Future<void> _showActions(Bill b) async {
     final CategoryDef c = catById(b.catId);
-    HapticFeedback.selectionClick();
-    showModalBottomSheet<void>(
+    final Palette p = AppScope.paletteOf(context);
+    final AppStore store = AppScope.storeOf(context);
+    await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (BuildContext ctx) {
-        final Palette p = AppScope.paletteOf(ctx);
         return Container(
-          padding: const EdgeInsets.fromLTRB(24, 18, 24, 28),
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
           decoration: BoxDecoration(
             color: p.card,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
@@ -641,43 +687,108 @@ class _HomePageState extends State<HomePage> {
                 height: 5,
                 decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
               ),
-              const SizedBox(height: 22),
-              CatBubble(cat: c, size: 58, iconSize: 26),
-              const SizedBox(height: 14),
-              Text(
-                '${b.expense ? '-' : '+'}¥${fmtMoney(b.amount)}',
-                style: T.num(p, 34).copyWith(color: b.expense ? p.ink : p.income),
+              const SizedBox(height: 18),
+              Row(
+                children: <Widget>[
+                  CatBubble(cat: c, size: 42, iconSize: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Text(
+                          b.note.isEmpty ? c.name : b.note,
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          '${b.date.month}月${b.date.day}日 ${timeLabel(b.date)} · ${store.money(b.amount)}',
+                          style: TextStyle(fontSize: 11.5, color: p.ink3),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                '${b.note.isEmpty ? c.name : b.note} · ${b.date.month}月${b.date.day}日 ${timeLabel(b.date)}',
-                style: TextStyle(fontSize: 12.5, color: p.ink2),
-              ),
-              const SizedBox(height: 22),
-              Pressable(
+              const SizedBox(height: 18),
+              _actionTile(
+                p,
+                icon: Icons.edit_rounded,
+                color: p.accent,
+                label: '编辑账单',
                 onTap: () {
                   Navigator.pop(ctx);
-                  final Bill? removed = AppScope.storeOf(context).removeBill(b.id);
-                  if (removed != null) showToast(context, '已删除该笔账单', icon: Icons.delete_rounded);
+                  _openEdit(b);
                 },
-                child: Container(
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: p.expense.withOpacity(0.10),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    '删除这笔账单',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: p.expense),
-                  ),
-                ),
+              ),
+              const SizedBox(height: 10),
+              _actionTile(
+                p,
+                icon: Icons.delete_outline_rounded,
+                color: p.expense,
+                label: '删除账单',
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final bool ok = await _confirmDelete(context);
+                  if (ok && mounted) {
+                    store.removeBill(b.id);
+                    showToast(context, '已删除该笔账单', icon: Icons.delete_rounded);
+                  }
+                },
               ),
             ],
           ),
         );
       },
     );
+  }
+
+  Widget _actionTile(Palette p,
+      {required IconData icon, required Color color, required String label, required VoidCallback onTap}) {
+    return Pressable(
+      onTap: onTap,
+      child: Container(
+        height: 50,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.09),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Icon(icon, size: 18, color: color),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _confirmDelete(BuildContext context) async {
+    final Palette p = AppScope.paletteOf(context);
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        backgroundColor: p.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Text('删除这笔账单？', style: T.h2(p).copyWith(fontSize: 17)),
+        content: Text('删除后无法恢复。', style: TextStyle(fontSize: 13, color: p.ink2, height: 1.5)),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('取消', style: TextStyle(color: p.ink2, fontWeight: FontWeight.w600)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('删除', style: TextStyle(color: p.expense, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    return ok ?? false;
   }
 }
 

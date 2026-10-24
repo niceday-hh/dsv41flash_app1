@@ -80,8 +80,9 @@ class BudgetPage extends StatelessWidget {
                       ),
                       const SizedBox(height: 5),
                       AnimatedMoney(
+                        prefix: '¥',
                         value: remain.abs(),
-                        style: T.num(p, 28).copyWith(color: remain >= 0 ? p.ink : p.expense),
+                        style: T.num(p, 27).copyWith(color: remain >= 0 ? p.ink : p.expense),
                       ),
                       const SizedBox(height: 5),
                       Container(
@@ -105,11 +106,11 @@ class BudgetPage extends StatelessWidget {
                 const SizedBox(height: 20),
                 Row(
                   children: <Widget>[
-                    _stat(p, '本月预算', '¥${fmtAmount(budget)}', p.ink),
+                    _stat(p, '本月预算', store.money(budget), p.ink),
                     Container(width: 1, height: 26, color: p.line),
-                    _stat(p, '已支出', '¥${fmtAmount(spent)}', p.expense),
+                    _stat(p, '已支出', store.money(spent), p.expense),
                     Container(width: 1, height: 26, color: p.line),
-                    _stat(p, '日均可用', '¥${fmtAmount(perDay)}', p.income),
+                    _stat(p, '日均可用', store.money(perDay), p.income),
                   ],
                 ),
               ],
@@ -133,7 +134,7 @@ class BudgetPage extends StatelessWidget {
                     child: Text(
                       remain >= 0
                           ? '预算已使用 ${(ratio * 100).toStringAsFixed(0)}%，本月剩余 ${leftDays} 天，注意控制节奏～'
-                          : '本月预算已超支 ¥${fmtAmount(-remain)}，下个月要更留意啦！',
+                          : '本月预算已超支 ${store.money(-remain)}，下个月要更留意啦！',
                       style: TextStyle(fontSize: 12, color: p.expense, height: 1.45, fontWeight: FontWeight.w500),
                     ),
                   ),
