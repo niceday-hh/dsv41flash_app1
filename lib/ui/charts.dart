@@ -408,3 +408,232 @@ class _RingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RingPainter old) => old.progress != progress;
 }
+
+/// 折线趋势图：渐变面积 + 网格 + 空心节点，点按可选中某个节点。
+class TrendLine extends StatefulWidget {
+  const TrendLine({
+    Key? key,
+    required this.values,
+    required this.labels,
+    this.height = 150,
+    this.highlight = -1,
+    this.onTap,
+    required this.color,
+  }) : super(key: key);
+
+  final List<double> values;
+  final List<String> labels;
+  final double height;
+  final int highlight;
+  final ValueChanged<int>? onTap;
+  final Color color;
+
+  @override
+  State<TrendLine> createState() => _TrendLineState();
+}
+
+class _TrendLineState extends State<TrendLine> with SingleTickerProviderStateMixin {
+  late AnimationController _c;
+
+  @override
+  void initState() {
+    super.initState();
+    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 620))..forward();
+  }
+
+  @override
+  void didUpdateWidget(covariant TrendLine old) {
+    super.didUpdateWidget(old);
+    if (old.values.length != widget.values.length) {
+      _c.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _handleTap(TapDownDetails d, double width, double height) {
+    final int n = widget.values.length;
+    if (n == 0 || widget.onTap == null) return;
+    const double padX = 10;
+    final double usable = width - padX * 2;
+    final double step = n <= 1 ? 0 : usable / (n - 1);
+    final int idx = step <= 0 ? 0 : ((d.localPosition.dx - padX) / step).round().clamp(0, n - 1);
+    widget.onTap!(idx);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(builder: (BuildContext ctx, BoxConstraints cons) {
+      final double w = cons.maxWidth;
+      return GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: (TapDownDetails d) => _handleTap(d, w, widget.height),
+        child: SizedBox(
+          height: widget.height,
+          child: AnimatedBuilder(
+            animation: _c,
+            builder: (BuildContext c, Widget? child) => CustomPaint(
+              painter: _TrendLinePainter(
+                values: widget.values,
+                labels: widget.labels,
+                progress: Curves.easeOutCubic.transform(_c.value),
+                highlight: widget.highlight,
+                color: widget.color,
+                textColor: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
+                gridColor: widget.color.withOpacity(0.10),
+              ),
+              size: Size(w, widget.height),
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _TrendLinePainter extends CustomPainter {
+  _TrendLinePainter({
+    required this.values,
+    required this.labels,
+    required this.progress,
+    required this.highlight,
+    required this.color,
+    required this.textColor,
+    required this.gridColor,
+  });
+
+  final List<double> values;
+  final List<String> labels;
+  final double progress;
+  final int highlight;
+  final Color color;
+  final Color textColor;
+  final Color gridColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (values.isEmpty) return;
+    const double padL = 10;
+    const double padR = 10;
+    const double padTop = 14;
+    const double padBottom = 24;
+    final double w = size.width - padL - padR;
+    final double h = size.height - padTop - padBottom;
+    final double maxV = values.fold<double>(0, (double m, double v) => v > m ? v : m);
+    final double top = maxV <= 0 ? 1 : maxV;
+
+    // 网格
+    final Paint grid = Paint()
+      ..color = gridColor
+      ..strokeWidth = 1;
+    for (int i = 0; i <= 3; i++) {
+      final double y = padTop + h * i / 3;
+      canvas.drawLine(Offset(padL, y), Offset(padL + w, y), grid);
+    }
+
+    final int n = values.length;
+    final double step = n <= 1 ? 0 : w / (n - 1);
+    double xOf(int i) => padL + step * i;
+    double yOf(int i) => padTop + h - (values[i] / top) * h;
+
+    final int shown = (n * progress).ceil().clamp(1, n);
+
+    final Path line = Path();
+    for (int i = 0; i < shown; i++) {
+      final Offset p = Offset(xOf(i), yOf(i));
+      if (i == 0) {
+        line.moveTo(p.dx, p.dy);
+      } else {
+        line.lineTo(p.dx, p.dy);
+      }
+    }
+
+    // 面积
+    final Path area = Path.from(line)
+      ..lineTo(xOf(shown - 1), padTop + h)
+      ..lineTo(xOf(0), padTop + h)
+      ..close();
+    canvas.drawPath(
+      area,
+      Paint()
+        ..shader = LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: <Color>[color.withOpacity(0.22), color.withOpacity(0.01)],
+        ).createShader(Rect.fromLTWH(padL, padTop, w, h)),
+    );
+
+    // 折线
+    canvas.drawPath(
+      line,
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.4
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round,
+    );
+
+    // 节点（数量多时只画高点与选中点）
+    final bool dense = n > 12;
+    for (int i = 0; i < shown; i++) {
+      final bool on = i == highlight;
+      if (dense && !on && values[i] <= 0) continue;
+      if (dense && !on && i != 0 && i != shown - 1) {
+        // 密集时只保留每 1/6 的节点
+        if (i % (n / 6).ceil() != 0) continue;
+      }
+      final Offset p = Offset(xOf(i), yOf(i));
+      if (on) {
+        canvas.drawLine(
+          Offset(p.dx, padTop),
+          Offset(p.dx, padTop + h),
+          Paint()
+            ..color = color.withOpacity(0.25)
+            ..strokeWidth = 1.2,
+        );
+        canvas.drawCircle(p, 7, Paint()..color = color.withOpacity(0.18));
+        canvas.drawCircle(p, 4.2, Paint()..color = color);
+        canvas.drawCircle(p, 4.2, Paint()
+          ..color = Colors.white
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.6);
+      } else {
+        canvas.drawCircle(p, 3, Paint()..color = Colors.white);
+        canvas.drawCircle(
+          p,
+          3,
+          Paint()
+            ..color = color.withOpacity(0.85)
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1.5,
+        );
+      }
+    }
+
+    // 标签（抽稀）
+    final int stride = n <= 7 ? 1 : (n <= 12 ? 2 : (n / 6).ceil());
+    for (int i = 0; i < n; i += stride) {
+      final String label = i < labels.length ? labels[i] : '';
+      if (label.isEmpty) continue;
+      final TextPainter tp = TextPainter(
+        text: TextSpan(text: label, style: TextStyle(fontSize: 9.5, color: textColor)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      double dx = xOf(i) - tp.width / 2;
+      dx = dx.clamp(0, size.width - tp.width);
+      tp.paint(canvas, Offset(dx, size.height - padBottom + 8));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _TrendLinePainter old) =>
+      old.progress != progress ||
+      old.highlight != highlight ||
+      old.values != values ||
+      old.color != color;
+}

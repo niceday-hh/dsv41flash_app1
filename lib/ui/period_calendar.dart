@@ -21,6 +21,7 @@ class PeriodCalendar extends StatelessWidget {
     required this.bills,
     required this.expense,
     this.onMonthTap,
+    this.onDayTap,
   }) : super(key: key);
 
   final DateTime start;
@@ -31,6 +32,9 @@ class PeriodCalendar extends StatelessWidget {
 
   /// 季 / 年缩略网格中点某个月时触发（通常跳到该月全页日历）
   final ValueChanged<DateTime>? onMonthTap;
+
+  /// 周 / 月视图点某一天时触发（查看当天明细）
+  final ValueChanged<DateTime>? onDayTap;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +59,10 @@ class PeriodCalendar extends StatelessWidget {
       final DateInfo info = dateInfoOf(d);
       cols.add(
         Expanded(
-          child: Column(
+          child: GestureDetector(
+            onTap: onDayTap == null ? null : () => onDayTap!(d),
+            behavior: HitTestBehavior.opaque,
+            child: Column(
             children: <Widget>[
               Text(
                 const <String>['一', '二', '三', '四', '五', '六', '日'][i],
@@ -107,6 +114,7 @@ class PeriodCalendar extends StatelessWidget {
                 const SizedBox(height: 10),
             ],
           ),
+          ),
         ),
       );
     }
@@ -140,7 +148,12 @@ class PeriodCalendar extends StatelessWidget {
       final double ratio = maxV <= 0 ? 0 : (v / maxV).clamp(0.0, 1.0);
       final DateInfo info = dateInfoOf(DateTime(month.year, month.month, d));
       cells.add(
-        Container(
+        GestureDetector(
+          onTap: onDayTap == null
+              ? null
+              : () => onDayTap!(DateTime(month.year, month.month, d)),
+          behavior: HitTestBehavior.opaque,
+          child: Container(
           margin: const EdgeInsets.all(2),
           decoration: BoxDecoration(
             color: v <= 0 ? p.cardSoft : tint.withOpacity(0.08 + ratio * 0.55),
@@ -169,6 +182,7 @@ class PeriodCalendar extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
           ),
         ),
       );

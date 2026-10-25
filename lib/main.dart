@@ -6,6 +6,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_shell.dart';
 import 'store.dart';
+import 'ui/whale_mark.dart';
 import 'theme.dart';
 import 'ui/common.dart';
 import 'voice/asr_engine.dart' as asr;
@@ -201,23 +202,14 @@ class _SplashState extends State<_Splash> with SingleTickerProviderStateMixin {
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
           ScaleTransition(
-            scale: Tween<double>(begin: 0.6, end: 1).animate(a),
-            child: Container(
-              width: 88,
-              height: 88,
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.16),
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(color: Colors.white.withOpacity(0.35)),
-              ),
-              alignment: Alignment.center,
-              child: const Text(
-                '鲸',
-                style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w700),
-              ),
+            scale: Tween<double>(begin: 0.62, end: 1).animate(a),
+            child: WhaleMark(
+              size: 168,
+              eyeColor: Color.lerp(p.accent, Colors.black, 0.38),
+              bellyColor: Colors.white.withOpacity(0.30),
             ),
           ),
-          const SizedBox(height: 22),
+          const SizedBox(height: 10),
           FadeTransition(
             opacity: CurvedAnimation(parent: _c, curve: const Interval(0.3, 1)),
             child: const Text(

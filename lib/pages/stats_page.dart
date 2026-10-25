@@ -8,6 +8,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../ui/add_sheet.dart';
+import '../ui/bill_list_sheet.dart';
 import '../ui/charts.dart';
 import '../ui/common.dart';
 import '../ui/period_calendar.dart';
@@ -108,6 +109,22 @@ class _StatsPageState extends State<StatsPage> {
     });
   }
 
+  void _openDay(DateTime d) {
+    HapticFeedback.selectionClick();
+    final AppStore store = AppScope.storeOf(context);
+    final List<Bill> dayBills = store.bills
+        .where((Bill b) =>
+            b.date.year == d.year && b.date.month == d.month && b.date.day == d.day)
+        .toList();
+    showBillListSheet(
+      context,
+      title: '${d.month}月${d.day}日',
+      subtitle: dayBills.isEmpty ? '这天还没有记录' : '共 ${dayBills.length} 笔',
+      bills: dayBills,
+      store: store,
+    );
+  }
+
   void _openMonth(DateTime m) {
     HapticFeedback.selectionClick();
     Navigator.of(context).push(PageRouteBuilder<bool>(
@@ -185,16 +202,46 @@ class _StatsPageState extends State<StatsPage> {
         break;
       default:
         final int days = _end.day;
-        final int weeks = (days / 7).ceil();
-        for (int w = 0; w < weeks; w++) {
-          double sum = 0;
-          for (int d = w * 7 + 1; d <= (w + 1) * 7 && d <= days; d++) {
-            sum += _dayTotal(store, DateTime(s.year, s.month, d), expense);
-          }
-          out.add(sum);
+        for (int d = 1; d <= days; d++) {
+          out.add(_dayTotal(store, DateTime(s.year, s.month, d), expense));
         }
     }
     return out;
+  }
+
+  /// 某个趋势节点对应的账单（周/月=当天，季/年=当月）
+  List<Bill> _nodeBills(AppStore store, int index) {
+    final DateTime s = _start;
+    if (_period == 2) {
+      final DateTime m = DateTime(s.year, s.month + index, 1);
+      return store.bills
+          .where((Bill b) =>
+              b.expense == _expense && b.date.year == m.year && b.date.month == m.month)
+          .toList();
+    }
+    if (_period == 3) {
+      final DateTime m = DateTime(s.year, index + 1, 1);
+      return store.bills
+          .where((Bill b) =>
+              b.expense == _expense && b.date.year == m.year && b.date.month == m.month)
+          .toList();
+    }
+    final DateTime d = DateTime(s.year, s.month, s.day + index);
+    return store.bills
+        .where((Bill b) =>
+            b.expense == _expense &&
+            b.date.year == d.year &&
+            b.date.month == d.month &&
+            b.date.day == d.day)
+        .toList();
+  }
+
+  String _nodeTitle(int index) {
+    final DateTime s = _start;
+    if (_period == 2) return '${s.month + index}月';
+    if (_period == 3) return '${index + 1}月';
+    final DateTime d = DateTime(s.year, s.month, s.day + index);
+    return '${d.month}月${d.day}日';
   }
 
   List<String> _trendLabels() {
@@ -207,8 +254,7 @@ class _StatsPageState extends State<StatsPage> {
       case 3:
         return List<String>.generate(12, (int i) => '${i + 1}');
       default:
-        final int weeks = (_end.day / 7).ceil();
-        return List<String>.generate(weeks, (int i) => '${i + 1}周');
+        return List<String>.generate(_end.day, (int i) => '${i + 1}');
     }
   }
 
@@ -313,6 +359,7 @@ class _StatsPageState extends State<StatsPage> {
               bills: store.bills,
               expense: _expense,
               onMonthTap: _openMonth,
+              onDayTap: _openDay,
             ),
             const SizedBox(height: 10),
             Center(
@@ -362,48 +409,83 @@ class _StatsPageState extends State<StatsPage> {
                   ],
                 ),
                 const SizedBox(height: 16),
-                TrendBars(
+                TrendLine(
                   values: trend,
                   labels: _trendLabels(),
-                  height: 138,
-                  highlight: _point >= 0 && _point < trend.length
-                      ? _point
-                      : (trend.isEmpty
-                          ? -1
-                          : trend.indexOf(trend.reduce((double a, double b) => a > b ? a : b))),
+                  height: 152,
+                  color: _expense ? p.expense : p.income,
+                  highlight: _point,
                   onTap: (int i) => setState(() => _point = _point == i ? -1 : i),
                 ),
                 if (_point >= 0 && _point < trend.length)
                   Padding(
                     padding: const EdgeInsets.only(top: 10),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                      decoration: BoxDecoration(
-                        color: p.accent.withOpacity(0.07),
-                        borderRadius: BorderRadius.circular(11),
-                      ),
-                      child: Row(
-                        children: <Widget>[
-                          Icon(Icons.place_rounded, size: 13, color: p.accent),
-                          const SizedBox(width: 6),
-                          Text(
-                            _trendLabels()[_point],
-                            style: TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.w700, color: p.accent),
-                          ),
-                          const Spacer(),
-                          Text(
-                            trend[_point] <= 0
-                                ? '这个节点暂无记录'
-                                : '${_expense ? '支出' : '收入'} ${store.money(trend[_point])}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: trend[_point] <= 0 ? p.ink3 : p.ink,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () {
+                        final List<Bill> nodeBills = _nodeBills(store, _point);
+                        if (nodeBills.isEmpty) {
+                          showToast(context, '${_nodeTitle(_point)}没有记录',
+                              icon: Icons.receipt_long_rounded);
+                          return;
+                        }
+                        showBillListSheet(
+                          context,
+                          title: _nodeTitle(_point),
+                          subtitle:
+                              '${_expense ? '支出' : '收入'} ${store.money(trend[_point])} · ${nodeBills.length} 笔',
+                          bills: nodeBills,
+                          store: store,
+                        );
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                        decoration: BoxDecoration(
+                          color: p.accent.withOpacity(0.07),
+                          borderRadius: BorderRadius.circular(11),
+                        ),
+                        child: Row(
+                          children: <Widget>[
+                            Icon(Icons.place_rounded, size: 13, color: p.accent),
+                            const SizedBox(width: 6),
+                            Text(
+                              _nodeTitle(_point),
+                              style: TextStyle(
+                                  fontSize: 12, fontWeight: FontWeight.w700, color: p.accent),
                             ),
-                          ),
-                        ],
+                            const Spacer(),
+                            Text(
+                              trend[_point] <= 0
+                                  ? '暂无记录'
+                                  : '${_expense ? '支出' : '收入'} ${store.money(trend[_point])}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: trend[_point] <= 0 ? p.ink3 : p.ink,
+                              ),
+                            ),
+                            if (trend[_point] > 0) ...<Widget>[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding:
+                                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: p.accent.withOpacity(0.12),
+                                  borderRadius: BorderRadius.circular(7),
+                                ),
+                                child: Text(
+                                  '查看 ${_nodeBills(store, _point).length} 笔',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: p.accent,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
                     ),
                   ),

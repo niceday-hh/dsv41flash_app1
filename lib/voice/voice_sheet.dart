@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../data.dart';
 import '../models.dart';
+import '../store.dart';
 import '../theme.dart';
 import '../ui/common.dart';
 import 'asr_engine.dart' as asr;
@@ -129,6 +130,22 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
     }
   }
 
+  /// 把用户的历史备注喂给解析器，用于按自己的说法推荐分类
+  List<NoteHint> _history() {
+    final AppStore store = AppScope.storeOf(context);
+    final List<NoteHint> out = <NoteHint>[];
+    for (final bool exp in <bool>[true, false]) {
+      for (final NoteStat n in store.noteStats(expense: exp)) {
+        out.add(NoteHint(
+          n.text,
+          n.cats.isEmpty ? (exp ? 'other' : 'otherin') : n.cats.first,
+          n.count,
+        ));
+      }
+    }
+    return out;
+  }
+
   Future<void> _endHold() async {
     if (!_holding) return;
     _holding = false;
@@ -152,7 +169,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
       }
       _textCtrl.text = text;
       _textCtrl.selection = TextSelection.collapsed(offset: text.length);
-      final VoiceIntent parsed = parseVoice(text);
+      final VoiceIntent parsed = parseVoice(text, history: _history());
       setState(() {
         _intent = parsed;
         _stage = _Stage.review;
@@ -190,7 +207,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
       if (!mounted || _stage != _Stage.review) return;
       final VoiceIntent? prev = _intent;
       if (prev == null) return;
-      final VoiceIntent next = parseVoice(_textCtrl.text);
+      final VoiceIntent next = parseVoice(_textCtrl.text, history: _history());
       setState(() {
         // 用户手动改过的字段不被重新解析覆盖
         _intent = next.copyWith(

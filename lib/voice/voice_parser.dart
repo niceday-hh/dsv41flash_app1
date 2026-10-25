@@ -1,4 +1,5 @@
 import '../data.dart';
+import '../models.dart';
 
 /// 语音记账解析结果
 class VoiceIntent {
@@ -49,6 +50,14 @@ class VoiceIntent {
       warnings: w,
     );
   }
+}
+
+/// 历史备注提示：用于按用户自己的说法推荐分类
+class NoteHint {
+  const NoteHint(this.text, this.catId, this.count);
+  final String text;
+  final String catId;
+  final int count;
 }
 
 // ------------------------------------------------------------------ 词典
@@ -114,13 +123,29 @@ const Map<String, int> _unit = <String, int>{
   '十': 10, '拾': 10, '百': 100, '佰': 100, '千': 1000, '仟': 1000, '万': 10000, '亿': 100000000,
 };
 
-/// 中文数字 → 阿拉伯数字："二十八" → 28，"一百零五" → 105
+/// 中文数字 → 数字："二十八" → 28，"一百零五" → 105，"一百二" → 120（口语简写），
+/// "二十八点五" → 28.5。
 double? cnNumber(String text) {
   if (text.isEmpty) return null;
+  final String normalized = text.replaceAll('点', '.');
+  final List<String> parts = normalized.split('.');
+  final double? integer = _cnInteger(parts.first);
+  if (integer == null) return null;
+  if (parts.length == 1) return integer;
+  final String frac = parts[1].replaceAllMapped(
+      RegExp('[零〇一二两三四五六七八九]'), (Match m) => '${_digit[m[0]]}');
+  final double f = double.tryParse('0.$frac') ?? 0;
+  return integer + f;
+}
+
+double? _cnInteger(String text) {
+  if (text.isEmpty) return null;
+  if (RegExp(r'^\d+$').hasMatch(text)) return double.tryParse(text);
   double total = 0;
   double section = 0;
   double number = 0;
   bool hasAny = false;
+  double lastUnit = 1;
   for (int i = 0; i < text.length; i++) {
     final String ch = text[i];
     if (_digit.containsKey(ch)) {
@@ -137,12 +162,15 @@ double? cnNumber(String text) {
         section += (number == 0 ? 1 : number) * u;
       }
       number = 0;
+      lastUnit = u.toDouble();
     } else {
       return null;
     }
   }
   if (!hasAny) return null;
-  return total + section + number;
+  // 口语简写：一百二 = 120、一千五 = 1500、一万二 = 12000；有「零」时不启用
+  final bool shorthand = RegExp(r'[百千万][一二两三四五六七八九]$').hasMatch(text);
+  return total + section + (shorthand ? number * lastUnit / 10 : number);
 }
 
 // ------------------------------------------------------------------ 文本归一化
@@ -191,49 +219,178 @@ String _withoutRejected(String text) {
       .replaceAll(RegExp(r'(?:没有|还没|没|未)(?:有)?(?:收到|收入|到账|报销|退款|发工资)(?:工资|薪水|奖金|钱|款)?'), ' ');
 }
 
+/// 显式指定：「分类是餐饮」
+String? _explicitCategory(String text, bool expense) {
+  final String names = catsFor(expense).map((CategoryDef c) => c.name).join('|');
+  final RegExpMatch? m = RegExp('分类(?:为|是|选|叫|记到)?\\s*($names)').firstMatch(text);
+  if (m == null) return null;
+  return catIdByName(m[1]!);
+}
+
+/// 历史备注推荐：返回 (分类, 是否存在歧义)
+(String?, bool) _historyCategory(String text, List<NoteHint> history, bool expense) {
+  final Map<String, int> score = <String, int>{};
+  for (final NoteHint h in history) {
+    if (h.text.length < 2 || !text.contains(h.text)) continue;
+    final bool incomeCat = _incomeCats.contains(h.catId);
+    if (incomeCat == expense) continue;
+    score[h.catId] = (score[h.catId] ?? 0) + h.count;
+  }
+  if (score.isEmpty) return (null, false);
+  final List<MapEntry<String, int>> list = score.entries.toList()
+    ..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
+  if (list.length > 1 && list[1].value * 2 > list.first.value) {
+    return (null, true);
+  }
+  return (list.first.key, false);
+}
+
 // ------------------------------------------------------------------ 日期
 
-DateTime _parseDate(String text, DateTime today, void Function(String) consume) {
-  DateTime date = DateTime(today.year, today.month, today.day);
-  const Map<String, int> rel = <String, int>{
-    '大前天': 3, '前天': 2, '昨天': 1, '昨晚': 1, '今早': 0, '今晚': 0, '今天': 0,
-  };
-  for (final MapEntry<String, int> e in rel.entries) {
-    if (text.contains(e.key)) {
-      consume(e.key);
-      return date.subtract(Duration(days: e.value));
+class _DateHit {
+  _DateHit(this.start, this.end, this.date, this.rank);
+  final int start;
+  final int end;
+  final DateTime date;
+  final int rank;
+}
+
+class _DateResult {
+  const _DateResult(this.date, this.body, this.warnings);
+  final DateTime date;
+  final String body;
+  final List<String> warnings;
+}
+
+const String _numWord = r'[0-9零〇一二两三四五六七八九十]+';
+
+int? _dateInt(String source) {
+  final double? v = cnNumber(source);
+  return v == null ? null : v.round();
+}
+
+/// 解析中文日期表达，返回日期、剔除日期片段后的正文与警告。
+_DateResult _parseDate(String text, DateTime now) {
+  final DateTime today = DateTime(now.year, now.month, now.day);
+  final List<_DateHit> hits = <_DateHit>[];
+  final List<String> warnings = <String>[];
+
+  bool blocked(int start, int end) {
+    final String before = text.substring(0, start);
+    if (RegExp(r'(?:不是|并非|不要记|不记在)\s*$').hasMatch(before)) return true;
+    final String after = text.substring(end);
+    // 物体的日期不一定是付款日："今天买了明天的电影票"
+    if (RegExp(r'^\s*的').hasMatch(after) &&
+        RegExp(r'买|订|预订|预定|交|缴|付|支付|补交|报销').hasMatch(before)) {
+      return true;
+    }
+    return false;
+  }
+
+  void collect(RegExp re, DateTime? Function(RegExpMatch) resolve, int rank) {
+    for (final RegExpMatch m in re.allMatches(text)) {
+      if (hits.any((_DateHit h) => m.start < h.end && m.end > h.start)) continue;
+      if (blocked(m.start, m.end)) continue;
+      final DateTime? d = resolve(m);
+      if (d == null) continue;
+      hits.add(_DateHit(m.start, m.end, d, rank));
     }
   }
-  final RegExpMatch? md = RegExp(r'(\d{1,2})月(\d{1,2})[日号]').firstMatch(text);
-  if (md != null) {
-    final int m = int.parse(md.group(1)!);
-    final int d = int.parse(md.group(2)!);
-    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
-      final int year = m > today.month ? today.year - 1 : today.year;
-      consume(md.group(0)!);
-      return DateTime(year, m, d);
+
+  bool valid(int y, int mo, int d) {
+    if (y < 1 || y > 9999 || mo < 1 || mo > 12 || d < 1 || d > 31) return false;
+    final DateTime dt = DateTime(y, mo, d);
+    return dt.year == y && dt.month == mo && dt.day == d;
+  }
+
+  DateTime at(int y, int mo, int d) => DateTime(y, mo, d, now.hour, now.minute);
+
+  // 1) 2026-10-24 / 2026/10/24
+  collect(RegExp(r'(?<![0-9])(\d{4})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{1,2})(?![0-9])'),
+      (RegExpMatch m) {
+    final int y = int.parse(m[1]!);
+    final int mo = int.parse(m[2]!);
+    final int d = int.parse(m[3]!);
+    return valid(y, mo, d) ? at(y, mo, d) : null;
+  }, 5);
+
+  // 2) 今年 / 去年 / 前年 / 明年 / 2025年 + X月X日（号）
+  collect(
+      RegExp('(?:(今年|去年|前年|明年)|($_numWord)\\s*年)?\\s*'
+          '($_numWord)\\s*月\\s*($_numWord)\\s*(?:[日号]|'
+          '(?![0-9零〇一二两三四五六七八九十元块角毛分]))'),
+      (RegExpMatch m) {
+    final int offset = const <String, int>{'今年': 0, '去年': -1, '前年': -2, '明年': 1}[m[1]] ?? 0;
+    final int? year = m[2] == null ? now.year + offset : _dateInt(m[2]!);
+    final int? month = _dateInt(m[3]!);
+    final int? day = _dateInt(m[4]!);
+    if (year == null || month == null || day == null) return null;
+    return valid(year, month, day) ? at(year, month, day) : null;
+  }, 4);
+
+  // 3) 上个月 8 号 / 这个月 15 号
+  collect(RegExp('(上上个月|上个月|上月|这个月|本月|下个月|下月)\\s*($_numWord)\\s*[日号]'),
+      (RegExpMatch m) {
+    final int offset = const <String, int>{
+      '上上个月': -2, '上个月': -1, '上月': -1, '这个月': 0, '本月': 0, '下个月': 1, '下月': 1,
+    }[m[1]]!;
+    final DateTime month = DateTime(now.year, now.month + offset, 1);
+    final int? day = _dateInt(m[2]!);
+    if (day == null) return null;
+    return valid(month.year, month.month, day) ? at(month.year, month.month, day) : null;
+  }, 4);
+
+  // 4) 三天前 / 15 天前
+  collect(RegExp('($_numWord)\\s*天(?:以)?前'), (RegExpMatch m) {
+    final int? days = _dateInt(m[1]!);
+    if (days == null || days < 0 || days > 3660) return null;
+    return at(now.year, now.month, now.day - days);
+  }, 3);
+
+  // 5) 大前天 / 前天 / 昨天 / 昨晚 / 今天 / 明天 / 后天
+  collect(RegExp(r'大前天|前天|昨天|昨晚|今天|今日|明天|后天'), (RegExpMatch m) {
+    final int offset = const <String, int>{
+      '大前天': -3, '前天': -2, '昨天': -1, '昨晚': -1,
+      '今天': 0, '今日': 0, '明天': 1, '后天': 2,
+    }[m[0]]!;
+    return at(now.year, now.month, now.day + offset);
+  }, 3);
+
+  // 6) 周三 / 上周五 / 下周一 / 礼拜天
+  collect(RegExp(r'(上上|上|这|本|下)?(?:周(?:星期|礼拜)?|星期|礼拜)([一二三四五六日天])'),
+      (RegExpMatch m) {
+    final int target = '一二三四五六日'.indexOf((m[2] ?? '').replaceAll('天', '日')) + 1;
+    if (target < 1) return null;
+    int offset = target - now.weekday;
+    final String? week = m[1];
+    if (week == null && offset > 0) offset -= 7;
+    offset += (const <String, int>{'上上': -2, '上': -1, '这': 0, '本': 0, '下': 1}[week] ?? 0) * 7;
+    return at(now.year, now.month, now.day + offset);
+  }, 2);
+
+  if (hits.isEmpty) {
+    // 识别到但无法确定具体日期
+    if (RegExp(r'上上个月|上个月|上月|本月|这个月|下个月|下月|去年|前年|上周末|前几天|最近几天|农历|春节|中秋|国庆|端午')
+        .hasMatch(text)) {
+      warnings.add('日期不明确，请核对');
     }
+    return _DateResult(today, text, warnings);
   }
-  final RegExpMatch? wk = RegExp(r'(?:周|星期)([一二三四五六日天])').firstMatch(text);
-  if (wk != null) {
-    const Map<String, int> wd = <String, int>{
-      '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7,
-    };
-    final int target = wd[wk.group(1)!] ?? 1;
-    int diff = today.weekday - target;
-    if (diff <= 0) diff += 7;
-    consume(wk.group(0)!);
-    return date.subtract(Duration(days: diff));
+
+  hits.sort((_DateHit a, _DateHit b) =>
+      a.rank != b.rank ? b.rank.compareTo(a.rank) : a.start.compareTo(b.start));
+  final _DateHit selected = hits.first;
+  if (DateTime(selected.date.year, selected.date.month, selected.date.day).isAfter(today)) {
+    warnings.add('日期在未来，请核对日期和年份');
   }
-  if (text.contains('上个月')) {
-    consume('上个月');
-    return DateTime(today.year, today.month - 1, today.day);
+
+  String body = text;
+  final List<_DateHit> ordered = List<_DateHit>.of(hits)
+    ..sort((_DateHit a, _DateHit b) => b.start.compareTo(a.start));
+  for (final _DateHit h in ordered) {
+    body = body.replaceRange(h.start, h.end, ' ' * (h.end - h.start));
   }
-  if (text.contains('上月')) {
-    consume('上月');
-    return DateTime(today.year, today.month - 1, today.day);
-  }
-  return date;
+  return _DateResult(selected.date, body, warnings);
 }
 
 // ------------------------------------------------------------------ 金额
@@ -246,61 +403,110 @@ class _MoneyHit {
   final int priority;
 }
 
-_MoneyHit? _findMoney(String text) {
+class _MoneyResult {
+  const _MoneyResult(this.value, this.warnings);
+  final double? value;
+  final List<String> warnings;
+}
+
+const String _num =
+    r'[0-9零〇一二两三四五六七八九十百千万亿]+(?:[.点][0-9零〇一二两三四五六七八九]+)?';
+
+_MoneyResult _findMoney(String text) {
   final List<_MoneyHit> hits = <_MoneyHit>[];
+  final List<String> warnings = <String>[];
 
-  for (final RegExpMatch m
-      in RegExp(r'(\d+(?:\.\d{1,2})?)\s*(?:块钱|块|元|圆)?').allMatches(text)) {
-    final double v = double.tryParse(m.group(1)!) ?? 0;
-    if (v <= 0) continue;
-    final bool hasUnit = m.group(0)!.length > m.group(1)!.length;
-    hits.add(_MoneyHit(v, m.start, m.end, hasUnit ? 10 : 5));
+  int priorityOf(int start) {
+    final String prefix = text.substring(start > 12 ? start - 12 : 0, start);
+    if (RegExp(r'不对|改成|改为|应该是|实际|实付|最后|最终').hasMatch(prefix)) return 3;
+    if (RegExp(r'一共|总共|合计|总计').hasMatch(prefix)) return 2;
+    return 0;
   }
 
-  for (final RegExpMatch m in RegExp(
-          r'([零〇一壹二两贰三叁四肆五伍六陆七柒八捌九玖十拾百佰千仟万]+)\s*(?:块钱|块|元|圆)')
-      .allMatches(text)) {
-    final double? v = cnNumber(m.group(1)!);
-    if (v != null && v > 0) hits.add(_MoneyHit(v, m.start, m.end, 9));
-  }
-
-  // 角/毛：跟在"块/元"后的单个数字，累加到最近的金额上
-  for (final RegExpMatch m
-      in RegExp(r'(?:块|元)\s*([零一二两三四五六七八九\d])\s*(?:角|毛)?').allMatches(text)) {
-    final String d = m.group(1)!;
-    final double jiao = double.tryParse(d) ?? (_digit[d]?.toDouble() ?? 0);
-    if (jiao <= 0 || jiao >= 10) continue;
-    // 允许与"块/元"这个字符重叠一个位置（"十五块五" 中 块 既是单位的结尾也是角的开头）
-    _MoneyHit? base;
-    for (final _MoneyHit h in hits) {
-      if (h.end <= m.start + 1 && (base == null || h.end > base.end)) base = h;
-    }
-    if (base == null) continue;
-    final int idx = hits.indexOf(base);
-    hits[idx] = _MoneyHit(base.value + jiao / 10, base.start, m.end, base.priority + 1);
-  }
-
-  // 4) 没有单位的中文数字（"买菜一百零五"），优先级最低
-  if (hits.isEmpty) {
-    for (final RegExpMatch m in RegExp(
-            r'[零〇一壹二两贰三叁四肆五伍六陆七柒八捌九玖十拾百佰千仟万]+')
-        .allMatches(text)) {
-      final double? v = cnNumber(m.group(0)!);
-      if (v != null && v > 0) hits.add(_MoneyHit(v, m.start, m.end, 1));
+  void add(RegExp pattern, double Function(RegExpMatch) value) {
+    for (final RegExpMatch m in pattern.allMatches(text)) {
+      if (hits.any((_MoneyHit h) => m.start < h.end && m.end > h.start)) continue;
+      final double v = value(m);
+      if (v <= 0 || v > 999999999) continue;
+      hits.add(_MoneyHit(v, m.start, m.end, priorityOf(m.start)));
     }
   }
 
-  if (hits.isEmpty) return null;
-  hits.sort((_MoneyHit a, _MoneyHit b) {
-    if (a.priority != b.priority) return b.priority.compareTo(a.priority);
-    return a.start.compareTo(b.start);
+  // 1) 元 / 块，可带角、分与尾数：十五块五、三块二毛五、28元
+  add(
+    RegExp('($_num)\\s*(?:元|块|圆)(?:钱)?'
+        '(?:\\s*($_num)\\s*(?:毛|角)(?:\\s*($_num)\\s*分?)?'
+        '|\\s*($_num)\\s*分'
+        '|\\s*($_num))?'),
+    (RegExpMatch m) {
+      double n = cnNumber(m[1]!) ?? 0;
+      if (m[2] != null) n += (cnNumber(m[2]!) ?? 0) / 10;
+      if (m[3] != null) n += (cnNumber(m[3]!) ?? 0) / 100;
+      if (m[4] != null) n += (cnNumber(m[4]!) ?? 0) / 100;
+      if (m[5] != null) {
+        final String raw = m[5]!;
+        final String digits = raw.replaceAllMapped(
+            RegExp('[零〇一二两三四五六七八九]'), (Match x) => '${_digit[x[0]]}');
+        n += (cnNumber(raw) ?? 0) / (digits.length <= 1 ? 10 : 100);
+      }
+      return n;
+    },
+  );
+
+  // 2) 五毛 / 三角
+  add(RegExp('($_num)\\s*(?:毛|角)(?:\\s*($_num)\\s*分?)?'), (RegExpMatch m) {
+    return (cnNumber(m[1]!) ?? 0) / 10 + (m[2] == null ? 0 : (cnNumber(m[2]!) ?? 0) / 100);
   });
-  return hits.first;
+
+  // 3) 三分
+  add(RegExp('($_num)\\s*分'), (RegExpMatch m) => (cnNumber(m[1]!) ?? 0) / 100);
+
+  // 4) 人民币 / ¥ 前缀
+  add(RegExp('(?:人民币|¥|￥)\\s*($_num)'), (RegExpMatch m) => cnNumber(m[1]!) ?? 0);
+
+  // 5) 动词后的裸数字：花了 28、一共 300
+  add(
+    RegExp('(?:花了?|付了?|支付了?|支出|收入|收到|到账|金额|价格|付款|收款|赚了?|'
+        '一共|总共|合计|实付|改成|改为|应该是)\\s*($_num)'),
+    (RegExpMatch m) => cnNumber(m[1]!) ?? 0,
+  );
+
+  // 6) 兜底：任何数字，但排除数量 / 时长 / 日期单位（"两杯""30分钟""3号"）
+  if (hits.isEmpty || hits.every((_MoneyHit h) => h.priority == 0)) {
+    for (final RegExpMatch m in RegExp(_num).allMatches(text)) {
+      if (hits.any((_MoneyHit h) => m.start < h.end && m.end > h.start)) continue;
+      final String suffix = text.substring(m.end);
+      if (RegExp(r'^\s*(?:个|杯|件|瓶|份|斤|公斤|千克|包|张|次|年|月|日|号|点|时|'
+              '分钟|小时|公里|千米|人|折|笔|期|积分|分贝|码|成|岁|度|米|克|升)')
+          .hasMatch(suffix)) {
+        continue;
+      }
+      final double? v = cnNumber(m[0]!);
+      if (v == null || v <= 0 || v > 999999999) continue;
+      hits.add(_MoneyHit(v, m.start, m.end, 0));
+    }
+  }
+
+  if (hits.isEmpty) return const _MoneyResult(null, <String>[]);
+
+  if (hits.length == 1) {
+    return _MoneyResult(hits.single.value, const <String>[]);
+  }
+
+  final List<_MoneyHit> prioritized = hits.where((_MoneyHit h) => h.priority > 0).toList()
+    ..sort((_MoneyHit a, _MoneyHit b) =>
+        a.priority != b.priority ? a.priority.compareTo(b.priority) : a.start.compareTo(b.start));
+  if (prioritized.isNotEmpty) {
+    warnings.add('包含多个金额，已采用总额或更正后的金额，请核对');
+    return _MoneyResult(prioritized.last.value, warnings);
+  }
+  warnings.add('识别到多个金额，请填写本次总额；暂不自动合并多笔账');
+  return _MoneyResult(hits.first.value, warnings);
 }
 
 // ------------------------------------------------------------------ 主入口
 
-VoiceIntent parseVoice(String raw, {DateTime? now}) {
+VoiceIntent parseVoice(String raw, {DateTime? now, List<NoteHint> history = const <NoteHint>[]}) {
   final DateTime today = now ?? DateTime.now();
   final List<String> warnings = <String>[];
   String body = _normalize(raw);
@@ -321,17 +527,16 @@ VoiceIntent parseVoice(String raw, {DateTime? now}) {
   body = _withoutRejected(body);
 
   // 日期
-  final List<String> consumed = <String>[];
-  final DateTime date = _parseDate(body, today, (String s) => consumed.add(s));
-  for (final String c in consumed) {
-    body = body.replaceFirst(c, ' ');
-  }
+  final _DateResult dateResult = _parseDate(body, today);
+  warnings.addAll(dateResult.warnings);
+  final DateTime date = dateResult.date;
+  body = dateResult.body;
 
   // 金额（用遮蔽后的文本找钱，避免把"30分钟"当 30 元）
-  final _MoneyHit? hit = _findMoney(_maskNonMoney(body));
-  final double amount = hit?.value ?? 0;
+  final _MoneyResult money = _findMoney(_maskNonMoney(body));
+  warnings.addAll(money.warnings);
+  final double amount = money.value ?? 0;
   if (amount <= 0) warnings.add('没有听清金额，请补充');
-  if (amount > 999999999) warnings.add('金额超出合理范围');
 
   // 收支
   final String typeBody = _withoutRejected(body);
@@ -344,21 +549,42 @@ VoiceIntent parseVoice(String raw, {DateTime? now}) {
       !RegExp(r'买|购买|花|支付|付给|转给|还没|没发|没有').hasMatch(body);
   final bool expenseCue =
       RegExp(r'买|花|支付|付了|付给|消费|支出|吃|喝|打车|充|交|还').hasMatch(body);
-  final bool expense = !(explicitIncome || (implicitIncome && !expenseCue));
+  final bool outgoing =
+      RegExp(r'支出|转给|给别人|还给|付给|借给').hasMatch(typeBody);
+  final bool expense =
+      outgoing ? true : !(explicitIncome || (implicitIncome && !expenseCue));
+  if (explicitIncome && RegExp('(?:花了?|支付了?|付了?)\\s*$_num').hasMatch(typeBody)) {
+    warnings.add('同时提到收款和付款，请核对收支类型与金额');
+  }
 
-  // 分类：关键词优先，更长的词胜出
-  String catId = expense ? 'other' : 'otherin';
-  int bestLen = 0;
-  _catWords.forEach((String id, List<String> words) {
-    final bool incomeCat = _incomeCats.contains(id);
-    if (incomeCat == expense) return;
-    for (final String w in words) {
-      if (source.contains(w) && w.length > bestLen) {
-        bestLen = w.length;
-        catId = id;
+  // 分类：显式指定 > 关键词匹配 > 历史备注推荐
+  final String otherId = expense ? 'other' : 'otherin';
+  String catId = otherId;
+  final String? explicit = _explicitCategory(body, expense);
+  if (explicit != null) {
+    catId = explicit;
+  } else {
+    int bestLen = 0;
+    _catWords.forEach((String id, List<String> words) {
+      final bool incomeCat = _incomeCats.contains(id);
+      if (incomeCat == expense) return;
+      for (final String w in words) {
+        if (source.contains(w) && w.length > bestLen) {
+          bestLen = w.length;
+          catId = id;
+        }
+      }
+    });
+    if (catId == otherId && history.isNotEmpty) {
+      final (String?, bool) hinted =
+          _historyCategory('$body ${explicitNote ?? ''}', history, expense);
+      if (hinted.$1 != null) {
+        catId = hinted.$1!;
+      } else if (hinted.$2) {
+        warnings.add('历史备注有多个分类，请核对分类');
       }
     }
-  });
+  }
 
   // 备注
   String note = (explicitNote ?? body)
