@@ -194,103 +194,150 @@ class _EntryLauncherState extends State<EntryLauncher> with SingleTickerProvider
     return AnimatedBuilder(
       animation: Listenable.merge(<Listenable>[_anim, _selection]),
       builder: (BuildContext ctx, Widget? _) {
-        final double t = Curves.easeOutCubic.transform(_anim.value.clamp(0.0, 1.0));
+        final double raw = _anim.value.clamp(0.0, 1.0);
+        final double t = Curves.easeOutCubic.transform(raw);
+        final double pop = Curves.easeOutBack.transform(raw);
         final Size screen = MediaQuery.of(context).size;
+        final double cx = (_origin.dx / screen.width) * 2 - 1;
+        final double cy = (_origin.dy / screen.height) * 2 - 1;
+
         return SizedBox(
           width: screen.width,
           height: screen.height,
           child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            IgnorePointer(
-              child: ColoredBox(color: Colors.black.withOpacity(0.46 * t)),
-            ),
-            ...EntryChoice.values.map((EntryChoice c) {
-              final Offset center = _targetCenter(c);
-              final bool on = _selection.value == c;
-              return Positioned(
-                left: center.dx - 36,
-                top: center.dy - 36,
-                child: IgnorePointer(
-                  child: Transform.scale(
-                    scale: 0.6 + 0.4 * t,
-                    child: Opacity(
-                      opacity: t.clamp(0.0, 1.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Container(
-                            width: 62,
-                            height: 62,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: on ? p.gradient : null,
-                              color: on ? null : p.card,
-                              border: Border.all(
-                                color: on ? Colors.transparent : p.line,
-                                width: 1.4,
-                              ),
-                              boxShadow: <BoxShadow>[
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(on ? 0.22 : 0.12),
-                                  blurRadius: on ? 22 : 12,
-                                  offset: const Offset(0, 8),
-                                ),
-                              ],
-                            ),
-                            child: Icon(
-                              c == EntryChoice.manual ? Icons.edit_rounded : Icons.mic_rounded,
-                              size: 25,
-                              color: on ? Colors.white : p.ink2,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: on ? p.accent : Colors.black.withOpacity(0.46),
-                              borderRadius: BorderRadius.circular(9),
-                            ),
-                            child: Text(
-                              c == EntryChoice.manual ? '手动记账' : '语音记账',
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+            fit: StackFit.expand,
+            children: <Widget>[
+              // 以「+」为圆心的径向遮罩，视觉焦点收在按钮附近
+              IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(cx, cy),
+                      radius: 1.05,
+                      colors: <Color>[
+                        Colors.black.withOpacity(0.08 * t),
+                        Colors.black.withOpacity(0.58 * t),
+                      ],
+                      stops: const <double>[0.0, 0.82],
                     ),
                   ),
                 ),
-              );
-            }),
-            Positioned(
-              left: _origin.dx - 80,
-              top: _origin.dy - 168,
-              width: 160,
-              child: IgnorePointer(
-                child: Opacity(
-                  opacity: (1 - t * 0.6).clamp(0.0, 1.0),
-                  child: Center(
+              ),
+              ...EntryChoice.values.map((EntryChoice c) => _target(p, c, t, pop)),
+              // 操作提示
+              Positioned(
+                left: screen.width / 2 - 90,
+                top: _origin.dy - 196,
+                width: 180,
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: (1 - t * 0.35).clamp(0.0, 1.0),
                     child: Text(
-                      _selection.value == null ? '滑到目标松手' : '松手进入',
+                      _selection.value == null ? '滑到目标后松手' : '',
+                      textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white.withOpacity(0.9),
+                        color: Colors.white.withOpacity(0.92),
+                        letterSpacing: 0.4,
+                        decoration: TextDecoration.none,
                       ),
                     ),
                   ),
                 ),
               ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _target(Palette p, EntryChoice c, double t, double pop) {
+    final Offset target = _targetCenter(c);
+    // 从「+」位置弹出到目标位置，带回弹
+    final Offset pos = Offset.lerp(_origin, target, pop.clamp(0.0, 1.08))!;
+    final bool on = _selection.value == c;
+    final Color tint = c == EntryChoice.manual ? p.accent : p.accent2;
+    final Color idleBg = p.dark ? const Color(0xFF232636) : Colors.white;
+    final Color idleBorder = p.dark ? Colors.white.withOpacity(0.12) : Colors.white;
+    final Color labelIdleBg = p.dark ? const Color(0xFF2A2E42) : Colors.white;
+
+    return Positioned(
+      left: pos.dx - 48,
+      top: pos.dy - 31,
+      width: 96,
+      child: IgnorePointer(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            AnimatedScale(
+              scale: on ? 1.08 : 1.0,
+              duration: const Duration(milliseconds: 150),
+              curve: Curves.easeOutBack,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 160),
+                width: 62,
+                height: 62,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: on
+                      ? LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[tint, tint.withOpacity(0.78)],
+                        )
+                      : null,
+                  color: on ? null : idleBg,
+                  border: Border.all(
+                    color: on ? Colors.white.withOpacity(0.34) : idleBorder,
+                    width: 1.2,
+                  ),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(
+                      color: on ? tint.withOpacity(0.45) : Colors.black.withOpacity(0.20),
+                      blurRadius: on ? 26 : 18,
+                      spreadRadius: on ? 2 : 0,
+                      offset: Offset(0, on ? 12 : 9),
+                    ),
+                  ],
+                ),
+                child: Icon(
+                  c == EntryChoice.manual ? Icons.edit_rounded : Icons.mic_rounded,
+                  size: 24,
+                  color: on ? Colors.white : tint,
+                ),
+              ),
+            ),
+            const SizedBox(height: 9),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: on ? tint : labelIdleBg,
+                borderRadius: BorderRadius.circular(9),
+                boxShadow: <BoxShadow>[
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.14),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: Text(
+                c == EntryChoice.manual ? '手动记账' : '语音记账',
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: on ? Colors.white : (p.dark ? Colors.white : p.ink2),
+                  decoration: TextDecoration.none,
+                ),
+              ),
             ),
           ],
         ),
-        );
-      },
+      ),
     );
   }
 }

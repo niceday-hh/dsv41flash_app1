@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../ui/add_sheet.dart';
 import '../ui/charts.dart';
 import '../ui/common.dart';
+import '../ui/period_calendar.dart';
 import 'insight_page.dart';
 
 const List<String> _periodNames = <String>['周', '月', '季', '年'];
@@ -25,7 +26,9 @@ class _StatsPageState extends State<StatsPage> {
   int _period = 1; // 0 周 1 月 2 季 3 年
   late DateTime _anchor;
   bool _expense = true;
+  int _view = 0; // 0 统计 1 日历
   int _selected = -1;
+  int _point = -1; // 趋势图选中的节点
 
   @override
   void initState() {
@@ -242,6 +245,7 @@ class _StatsPageState extends State<StatsPage> {
                     _period = i;
                     _anchor = DateTime.now();
                     _selected = -1;
+                    _point = -1;
                   });
                 },
               ),
@@ -249,8 +253,39 @@ class _StatsPageState extends State<StatsPage> {
           ),
           const SizedBox(height: 14),
           _periodBar(p),
-          const SizedBox(height: 12),
-          _totalCard(p, store, total, delta, count, days),
+          const SizedBox(height: 10),
+          Center(
+            child: Segmented(
+              labels: const <String>['统计', '日历'],
+              index: _view,
+              compact: true,
+              segWidth: 62,
+              onChanged: (int i) {
+                if (i == _view) return;
+                HapticFeedback.selectionClick();
+                setState(() => _view = i);
+              },
+            ),
+          ),
+          const SizedBox(height: 14),
+          if (_view == 1) ...<Widget>[
+            PeriodCalendar(
+              start: _start,
+              end: _end,
+              periodIndex: _period,
+              bills: store.bills,
+              expense: _expense,
+            ),
+            const SizedBox(height: 10),
+            Center(
+              child: Text(
+                '颜色越深表示当天花费越多 · 格内小字为节气 / 节日',
+                style: TextStyle(fontSize: 10.5, color: p.ink3),
+              ),
+            ),
+          ],
+          if (_view == 0) ...<Widget>[
+            _totalCard(p, store, total, delta, count, days),
           const SizedBox(height: 14),
           SoftCard(
             padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
@@ -269,6 +304,7 @@ class _StatsPageState extends State<StatsPage> {
                         setState(() {
                           _expense = i == 0;
                           _selected = -1;
+                          _point = -1;
                         });
                       },
                     ),
@@ -377,10 +413,47 @@ class _StatsPageState extends State<StatsPage> {
                   values: trend,
                   labels: _trendLabels(),
                   height: 138,
-                  highlight: trend.isEmpty
-                      ? -1
-                      : trend.indexOf(trend.reduce((double a, double b) => a > b ? a : b)),
+                  highlight: _point >= 0 && _point < trend.length
+                      ? _point
+                      : (trend.isEmpty
+                          ? -1
+                          : trend.indexOf(trend.reduce((double a, double b) => a > b ? a : b))),
+                  onTap: (int i) => setState(() => _point = _point == i ? -1 : i),
                 ),
+                if (_point >= 0 && _point < trend.length)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      decoration: BoxDecoration(
+                        color: p.accent.withOpacity(0.07),
+                        borderRadius: BorderRadius.circular(11),
+                      ),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(Icons.place_rounded, size: 13, color: p.accent),
+                          const SizedBox(width: 6),
+                          Text(
+                            _trendLabels()[_point],
+                            style: TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.w700, color: p.accent),
+                          ),
+                          const Spacer(),
+                          Text(
+                            trend[_point] <= 0
+                                ? '这个节点暂无记录'
+                                : '${_expense ? '支出' : '收入'} ${store.money(trend[_point])}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: trend[_point] <= 0 ? p.ink3 : p.ink,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -416,6 +489,18 @@ class _StatsPageState extends State<StatsPage> {
                         padding: const EdgeInsets.only(bottom: 14),
                         child: Row(
                           children: <Widget>[
+                            SizedBox(
+                              width: 15,
+                              child: Text(
+                                '${i + 1}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: i < 3 ? p.accent : p.ink3,
+                                  height: 1,
+                                ),
+                              ),
+                            ),
                             CatBubble(cat: c, size: 36, iconSize: 17),
                             const SizedBox(width: 10),
                             Expanded(
@@ -511,6 +596,7 @@ class _StatsPageState extends State<StatsPage> {
               style: TextStyle(fontSize: 11, color: p.ink3),
             ),
           ),
+          ],
         ],
       ),
     );

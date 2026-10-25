@@ -174,6 +174,99 @@ class _BillSheetState extends State<_BillSheet> {
 
   // ------------------------------------------------------------ 保存
 
+  Future<void> _showAllCategories() async {
+    HapticFeedback.selectionClick();
+    final Palette p = AppScope.paletteOf(context);
+    final List<CategoryDef> cats = catsFor(_expense);
+    final String? picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Container(
+        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.72),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: <Widget>[
+                Text('全部分类', style: T.h2(p).copyWith(fontSize: 17)),
+                const SizedBox(width: 8),
+                Text('${cats.length} 个', style: TextStyle(fontSize: 11, color: p.ink3)),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Flexible(
+              child: GridView.builder(
+                padding: EdgeInsets.zero,
+                physics: const BouncingScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 5,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 6,
+                  childAspectRatio: 0.92,
+                ),
+                itemCount: cats.length,
+                itemBuilder: (BuildContext c2, int i) {
+                  final CategoryDef c = cats[i];
+                  final bool on = c.id == _catId;
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(ctx, c.id),
+                    behavior: HitTestBehavior.opaque,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: on ? c.color.withOpacity(0.16) : c.color.withOpacity(0.10),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: on ? c.color : Colors.transparent,
+                              width: 1.6,
+                            ),
+                          ),
+                          child: Icon(c.icon, size: 20, color: c.color),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          c.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.clip,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                            color: on ? c.color : p.ink2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _catId = picked);
+  }
+
   Future<void> _save() async {
     final double v = _value;
     if (v <= 0) {
@@ -453,29 +546,15 @@ class _BillSheetState extends State<_BillSheet> {
                       ],
                     ),
                     if (cloud.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 12),
-                      Row(
-                        children: <Widget>[
-                          Icon(Icons.cloud_queue_rounded, size: 13, color: p.accent),
-                          const SizedBox(width: 5),
-                          Text(
-                            '常用备注',
-                            style: TextStyle(fontSize: 11, color: p.ink3, fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '点一下即可填入',
-                            style: TextStyle(fontSize: 9.5, color: p.ink3),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 6),
+                      const SizedBox(height: 8),
                       ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 74),
+                        constraints: const BoxConstraints(maxHeight: 38),
                         child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
                           child: _NoteCloud(
                         data: cloud,
                         palette: p,
+                        wrap: false,
                         selected: _noteCtrl.text,
                         onTap: (String text) {
                           HapticFeedback.selectionClick();
@@ -489,20 +568,43 @@ class _BillSheetState extends State<_BillSheet> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     SizedBox(
-                      height: 216,
+                      height: 136,
                       child: GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                          mainAxisSpacing: 4,
-                          crossAxisSpacing: 8,
-                          childAspectRatio: 1.32,
+                          crossAxisCount: 5,
+                          mainAxisSpacing: 2,
+                          crossAxisSpacing: 6,
+                          childAspectRatio: 1.16,
                         ),
-                        itemCount: cats.length,
+                        // 前 9 个常用分类 + 一个「全部」入口
+                        itemCount: cats.length > 9 ? 10 : cats.length,
                         itemBuilder: (BuildContext context, int i) {
+                          if (i == 9 && cats.length > 9) {
+                            return GestureDetector(
+                              onTap: () => _showAllCategories(),
+                              behavior: HitTestBehavior.opaque,
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: <Widget>[
+                                  Container(
+                                    width: 44,
+                                    height: 44,
+                                    decoration: BoxDecoration(
+                                      color: p.cardSoft,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(Icons.grid_view_rounded, size: 20, color: p.ink2),
+                                  ),
+                                  const SizedBox(height: 5),
+                                  Text('全部', style: TextStyle(fontSize: 10.5, color: p.ink2)),
+                                ],
+                              ),
+                            );
+                          }
                           final CategoryDef c = cats[i];
                           final bool on = c.id == _catId;
                           return GestureDetector(
@@ -700,6 +802,7 @@ class _NoteCloud extends StatelessWidget {
   final Palette palette;
   final String selected;
   final ValueChanged<String> onTap;
+  final bool wrap;
 
   const _NoteCloud({
     Key? key,
@@ -707,11 +810,55 @@ class _NoteCloud extends StatelessWidget {
     required this.palette,
     required this.selected,
     required this.onTap,
+    this.wrap = true,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final int maxCount = data.fold<int>(1, (int m, MapEntry<String, int> e) => e.value > m ? e.value : m);
+    final List<Widget> chips = data.map((MapEntry<String, int> e) {
+      final double ratio = maxCount <= 1 ? 0.45 : (e.value - 1) / (maxCount - 1);
+      final double font = 11 + ratio * 5.5;
+      final bool on = selected == e.key;
+      final Color base = on ? palette.accent : palette.ink2;
+      return GestureDetector(
+        onTap: () => onTap(e.key),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(horizontal: 9 + ratio * 3, vertical: 4 + ratio * 2),
+          decoration: BoxDecoration(
+            color: on
+                ? palette.accent.withOpacity(0.14)
+                : palette.accent.withOpacity(0.05 + ratio * 0.07),
+            borderRadius: BorderRadius.circular(11),
+            border: Border.all(
+              color: on ? palette.accent.withOpacity(0.45) : Colors.transparent,
+              width: 1.2,
+            ),
+          ),
+          child: Text(
+            e.key,
+            style: TextStyle(
+              fontSize: font,
+              height: 1.1,
+              fontWeight: ratio > 0.55 ? FontWeight.w700 : FontWeight.w500,
+              color: on ? palette.accent : base.withOpacity(0.62 + ratio * 0.38),
+            ),
+          ),
+        ),
+      );
+    }).toList();
+
+    if (!wrap) {
+      return Row(
+        children: <Widget>[
+          for (int i = 0; i < chips.length; i++) ...<Widget>[
+            if (i > 0) const SizedBox(width: 7),
+            chips[i],
+          ],
+        ],
+      );
+    }
     return Wrap(
       spacing: 7,
       runSpacing: 7,

@@ -10,6 +10,8 @@ class InsightItem {
   final String value;
   final String summary;
   final String method;
+  /// 面向普通用户的白话解释，与技术口径的 method 分开
+  final String guide;
   final List<Bill> bills;
   final bool ready;
   final int tone; // 0 中性 1 偏高 2 良好
@@ -20,6 +22,7 @@ class InsightItem {
     required this.value,
     required this.summary,
     required this.method,
+    this.guide = '',
     this.bills = const <Bill>[],
     this.ready = true,
     this.tone = 0,
@@ -126,6 +129,7 @@ InsightBundle buildInsights({
       summary: '前 $days 天没有记录，无法计算变化率。',
       method: '变化率 = (本期 − 对照) ÷ 对照；不使用未结束的月份与完整上月直接比较。',
       ready: false,
+      guide: '把相同天数放在一起比：之前花 100 元、这期花 120 元，就是多了 20%。',
     ));
   } else {
     final double delta = total - prevTotal;
@@ -138,6 +142,7 @@ InsightBundle buildInsights({
       method: '$periodNote\n变化率 = (本期总额 − 对照总额) ÷ 对照总额。',
       bills: <Bill>[...current, ...previous],
       tone: delta > 0 ? 1 : 2,
+      guide: '把相同天数放在一起比：之前花 100 元、这期花 120 元，就是多了 20%。',
     ));
 
     // 2. 驱动因素
@@ -163,6 +168,7 @@ InsightBundle buildInsights({
           .join(' · '),
       method: '$periodNote\n各分类「本期 − 对照」后按绝对变化排序，差额之和等于总额变化。',
       bills: <Bill>[...current, ...previous].where((Bill b) => b.catId == top.key).toList(),
+      guide: '像拆开一张总账，看看餐饮、购物各自多了还是少了。变化最大不等于最该削减。',
     ));
 
     // 3. 频次 × 单笔均额
@@ -178,6 +184,7 @@ InsightBundle buildInsights({
       method: '$periodNote\n总额 = 笔数 × 单笔均额。\n'
           '频次贡献 = Δ笔数 × 两期均额均值；均额贡献 = Δ均额 × 两期笔数均值。两项相加等于总额变化。',
       bills: <Bill>[...current, ...previous],
+      guide: '总额像一个长方形：一边是笔数，一边是每笔平均。哪边变大，总额都可能变大。',
     ));
   }
 
@@ -198,6 +205,7 @@ InsightBundle buildInsights({
       method: '分别除以本期 $weekends 个周末日与 $weekdays 个工作日（含无记录日），不校正节假日。',
       bills: current,
       tone: we > wd * 1.5 ? 1 : 0,
+      guide: '周末和工作日天数不同，要比「每天平均花多少」，而不是比总额。',
     ));
   }
 
@@ -219,10 +227,52 @@ InsightBundle buildInsights({
     value: '${(top3 / total * 100).toStringAsFixed(1)}%',
     summary: '前 ${math.min(3, cats.length)} 个分类占比；等效均匀分类数 ${(1 / hhi).toStringAsFixed(1)}。',
     method: '集中度 H = Σ(分类占比²)，等效分类数 = 1 / H，只描述金额结构，不含健康与否的判断。',
+    guide: '想象把 100 元分给不同分类。最大的几块越大，支出越集中；房租占大头也很正常。',
     bills: current,
   ));
 
-  // 6. 疑似周期账单
+  // 6. 异常金额线索：同分类 90 天基线 + MAD 稳健 Z 分数
+  {
+    final DateTime baseFrom = observedEnd.subtract(const Duration(days: 90));
+    final Map<String, List<double>> baseline = <String, List<double>>{};
+    for (final Bill b in valid) {
+      if (within(b, baseFrom, from)) {
+        baseline.putIfAbsent(b.catId, () => <double>[]).add(b.amount);
+      }
+    }
+    final List<Bill> unusual = <Bill>[];
+    int covered = 0;
+    for (final Bill b in current) {
+      final List<double>? hist = baseline[b.catId];
+      if (hist == null || hist.length < 8) continue;
+      covered++;
+      final double med = _median(hist);
+      final double mad = _median(hist.map((double v) => (v - med).abs()).toList());
+      if (mad <= 0) continue;
+      final double z = 0.6745 * (b.amount - med) / mad;
+      if (z > 3.5) unusual.add(b);
+    }
+    unusual.sort((Bill a, Bill b) => b.amount.compareTo(a.amount));
+    if (covered > 0) {
+      items.add(InsightItem(
+        id: 'unusual',
+        title: '异常金额线索',
+        value: '${unusual.length} 笔待复核',
+        summary: unusual.isEmpty
+            ? '已评估 $covered 笔，未出现明显高于平时的支出。'
+            : '最大一笔 ${catById(unusual.first.catId).name} ${_money(unusual.first.amount)}。',
+        method: '同分类取本期之前的 90 天作基线，至少 8 笔才评估；'
+            'Z = 0.6745 × (金额 − 中位数) ÷ MAD，只标记 Z > 3.5 的高额。'
+            '金额分布常偏斜，这是探索线索，不是统计显著结论。',
+        guide: '把一笔账单和之前同类别的花销比。被标出来只是「值得看一眼」，'
+            '可能是大件、旅行，也可能是录错。',
+        bills: unusual,
+        tone: unusual.isEmpty ? 2 : 1,
+      ));
+    }
+  }
+
+  // 7. 疑似周期账单
   final Map<String, List<Bill>> groups = <String, List<Bill>>{};
   for (final Bill b in valid.where((Bill b) =>
       within(b, observedEnd.subtract(const Duration(days: 180)), observedEnd))) {
@@ -258,6 +308,7 @@ InsightBundle buildInsights({
     summary: labels.isEmpty ? '近 180 天内没有发现稳定的周期记录。' : labels.take(3).join('\n'),
     method: '同一分类 + 相同备注，至少 3 次不同日期；间隔中位数 6–8 天或 26–33 天，'
         '各次间隔偏差不超过 1/3 天，金额偏差不超过 10%。属于启发式提示，不一定真的是订阅。',
+      guide: '像每月会员费：备注相同、金额接近、隔固定时间出现。只是候选，需要你确认。',
     bills: recurringBills,
   ));
 
@@ -276,6 +327,7 @@ InsightBundle buildInsights({
           : '按当前日均延续，${projected > budget ? '将超出' : '仍在'}月预算 ${_money(budget)}'
               '${projected > budget ? ' ${_money(projected - budget)}' : ' 内'}。',
       method: '已记支出 ÷ 已过天数 × 本月天数，假设记录完整、后续日均稳定，属于情景外推而非预测保证。',
+      guide: '像观察水流速度估算一桶水：假设接下来每天花得差不多，估算整月金额。',
       bills: current,
       tone: budget > 0 ? (projected > budget ? 1 : 2) : 0,
     ));

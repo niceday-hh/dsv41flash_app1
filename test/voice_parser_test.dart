@@ -19,7 +19,7 @@ void main() {
   test('分类识别', () {
     expect(parseVoice('地铁三块').catId, 'traffic');
     expect(parseVoice('奶茶十八块').catId, 'food');
-    expect(parseVoice('买衣服三百块').catId, 'shop');
+    expect(parseVoice('买衣服三百块').catId, 'cloth');
     expect(parseVoice('电影票四十五块').catId, 'fun');
     expect(parseVoice('话费五十块').catId, 'phone');
   });

@@ -9,6 +9,7 @@ import '../store.dart';
 import '../theme.dart';
 import '../ui/add_sheet.dart';
 import '../ui/amount_keypad.dart';
+import '../ui/note_picker.dart';
 import 'calendar_page.dart';
 import 'search_page.dart';
 import '../ui/common.dart';
@@ -744,91 +745,13 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _editNote(Bill b) async {
     HapticFeedback.selectionClick();
-    final Palette p = AppScope.paletteOf(context);
     final AppStore store = AppScope.storeOf(context);
-    final List<MapEntry<String, int>> cloud = store.noteCloud(b.catId, expense: b.expense, limit: 12);
-    final TextEditingController ctrl = TextEditingController(text: b.note);
-    final String? note = await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) => Padding(
-        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-          decoration: BoxDecoration(
-            color: p.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text('修改备注', style: T.h2(p).copyWith(fontSize: 16)),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                decoration: BoxDecoration(
-                  color: p.cardSoft,
-                  borderRadius: BorderRadius.circular(13),
-                ),
-                child: TextField(
-                  controller: ctrl,
-                  autofocus: true,
-                  maxLength: 20,
-                  style: TextStyle(fontSize: 15, color: p.ink),
-                  cursorColor: p.accent,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    counterText: '',
-                    hintText: '写点什么',
-                  ),
-                ),
-              ),
-              if (cloud.isNotEmpty) ...<Widget>[
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 7,
-                  runSpacing: 7,
-                  children: cloud.map((MapEntry<String, int> e) {
-                    return GestureDetector(
-                      onTap: () {
-                        HapticFeedback.selectionClick();
-                        ctrl.text = e.key;
-                        ctrl.selection = TextSelection.collapsed(offset: e.key.length);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: p.accent.withOpacity(0.07),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(e.key,
-                            style: TextStyle(fontSize: 12, color: p.ink2)),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-              const SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    backgroundColor: p.accent.withOpacity(0.10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  ),
-                  onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-                  child: Text('保存备注',
-                      style: TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w700, color: p.accent)),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    final String? note = await showNotePicker(
+      context,
+      store: store,
+      catId: b.catId,
+      expense: b.expense,
+      initial: b.note,
     );
     if (note == null || !mounted) return;
     store.updateBill(b.copyWith(note: note));
@@ -899,6 +822,17 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 18),
               _actionTile(
                 p,
+                icon: Icons.receipt_long_rounded,
+                color: p.accent2,
+                label: '查看详情',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showDetail(b);
+                },
+              ),
+              const SizedBox(height: 10),
+              _actionTile(
+                p,
                 icon: Icons.edit_rounded,
                 color: p.accent,
                 label: '编辑账单',
@@ -926,6 +860,115 @@ class _HomePageState extends State<HomePage> {
           ),
         );
       },
+    );
+  }
+
+  Future<void> _showDetail(Bill b) async {
+    final Palette p = AppScope.paletteOf(context);
+    final AppStore store = AppScope.storeOf(context);
+    final CategoryDef c = catById(b.catId);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(22, 14, 22, 30),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Container(
+              width: 40,
+              height: 5,
+              decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+            ),
+            const SizedBox(height: 20),
+            CatBubble(cat: c, size: 62, iconSize: 28),
+            const SizedBox(height: 14),
+            Text(
+              b.note.isEmpty ? c.name : b.note,
+              textAlign: TextAlign.center,
+              style: T.h2(p).copyWith(fontSize: 17),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '${c.name} · ${b.expense ? '支出' : '收入'}',
+              style: TextStyle(fontSize: 11.5, color: p.ink3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '${b.expense ? '-' : '+'}${store.money(b.amount)}',
+              style: TextStyle(
+                fontSize: 34,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -1,
+                color: b.expense ? p.ink : p.income,
+                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: p.cardSoft,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Text(
+                '${b.date.year}/${b.date.month}/${b.date.day} '
+                '${b.date.hour.toString().padLeft(2, '0')}:${b.date.minute.toString().padLeft(2, '0')}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: p.ink2,
+                  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Pressable(
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _openEdit(b);
+                    },
+                    child: Container(
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: p.accent.withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text('编辑',
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w700, color: p.accent)),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Pressable(
+                    onTap: () => Navigator.pop(ctx),
+                    child: Container(
+                      height: 46,
+                      decoration: BoxDecoration(
+                        color: p.cardSoft,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      alignment: Alignment.center,
+                      child: Text('关闭',
+                          style: TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600, color: p.ink2)),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 

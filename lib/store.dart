@@ -43,6 +43,8 @@ class AppStore extends ChangeNotifier {
   bool darkMode = false;
   int accentIndex = 0;
   bool reminder = true;
+  int reminderHour = 21;
+  int reminderMinute = 30;
   bool loaded = false;
   bool hideAmounts = false;
   bool keepVoiceModel = true;
@@ -103,6 +105,10 @@ class AppStore extends ChangeNotifier {
     if (allow('dark')) darkMode = (map['dark'] as bool?) ?? darkMode;
     if (allow('accent')) accentIndex = (map['accent'] as int?) ?? accentIndex;
     if (allow('reminder')) reminder = (map['reminder'] as bool?) ?? reminder;
+    if (allow('reminderTime')) {
+      reminderHour = ((map['reminderHour'] as num?)?.toInt() ?? reminderHour).clamp(0, 23);
+      reminderMinute = ((map['reminderMinute'] as num?)?.toInt() ?? reminderMinute).clamp(0, 59);
+    }
     if (allow('hide')) hideAmounts = (map['hide'] as bool?) ?? hideAmounts;
     if (allow('user')) userName = (map['user'] as String?) ?? userName;
     if (allow('keepVoice')) {
@@ -139,6 +145,8 @@ class AppStore extends ChangeNotifier {
         'dark': darkMode,
         'accent': accentIndex,
         'reminder': reminder,
+        'reminderHour': reminderHour,
+        'reminderMinute': reminderMinute,
         'hide': hideAmounts,
         'user': userName,
         'keepVoice': keepVoiceModel,
@@ -257,6 +265,21 @@ class AppStore extends ChangeNotifier {
     return list.take(limit).toList();
   }
 
+  /// 备注统计：次数、最近使用时间、关联分类（用于备注选择器排序与筛选）
+  List<NoteStat> noteStats({bool expense = true}) {
+    final Map<String, NoteStat> map = <String, NoteStat>{};
+    for (final Bill b in _bills) {
+      if (b.expense != expense) continue;
+      final String n = b.note.trim();
+      if (n.isEmpty) continue;
+      final NoteStat st = map.putIfAbsent(n, () => NoteStat(n, b.date));
+      st.count++;
+      st.cats.add(b.catId);
+      if (b.date.isAfter(st.latest)) st.latest = b.date;
+    }
+    return map.values.toList();
+  }
+
   /// 搜索账单：备注 / 分类名 / 金额
   List<Bill> search(String q) {
     final String key = q.trim().toLowerCase();
@@ -355,6 +378,14 @@ class AppStore extends ChangeNotifier {
   void setAccent(int i) {
     _touch('accent');
     accentIndex = i;
+    notifyListeners();
+    _persist();
+  }
+
+  void setReminderTime(int hour, int minute) {
+    _touch('reminderTime');
+    reminderHour = hour.clamp(0, 23);
+    reminderMinute = minute.clamp(0, 59);
     notifyListeners();
     _persist();
   }
@@ -545,4 +576,13 @@ class AppStore extends ChangeNotifier {
     }
     return rows;
   }
+}
+
+/// 备注统计项
+class NoteStat {
+  NoteStat(this.text, this.latest);
+  final String text;
+  int count = 1;
+  DateTime latest;
+  final Set<String> cats = <String>{};
 }

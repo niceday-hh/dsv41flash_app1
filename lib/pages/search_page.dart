@@ -18,6 +18,7 @@ class SearchPage extends StatefulWidget {
 }
 
 class _SearchPageState extends State<SearchPage> {
+  String? _catId;
   final TextEditingController _ctrl = TextEditingController();
   String _q = '';
 
@@ -31,8 +32,18 @@ class _SearchPageState extends State<SearchPage> {
   Widget build(BuildContext context) {
     final Palette p = AppScope.paletteOf(context);
     final AppStore store = AppScope.storeOf(context);
-    final List<Bill> results = store.search(_q);
+    final List<Bill> all = store.search(_q);
+    final List<Bill> results = _catId == null
+        ? all
+        : all.where((Bill b) => b.catId == _catId).toList();
     final double total = AppStore.total(results, expense: true);
+    // 结果里出现过的分类，按金额排序作为快捷筛选
+    final Map<String, double> catTotals = <String, double>{};
+    for (final Bill b in all) {
+      catTotals[b.catId] = (catTotals[b.catId] ?? 0) + b.amount;
+    }
+    final List<String> catOrder = catTotals.keys.toList()
+      ..sort((String a, String b) => (catTotals[b] ?? 0).compareTo(catTotals[a] ?? 0));
 
     return Scaffold(
       backgroundColor: p.bg,
@@ -108,6 +119,23 @@ class _SearchPageState extends State<SearchPage> {
                   padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
                   physics: const BouncingScrollPhysics(),
                   children: <Widget>[
+                    if (catOrder.length > 1)
+                      SizedBox(
+                        height: 30,
+                        child: ListView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.only(left: 2, bottom: 8),
+                          children: <Widget>[
+                            _filterChip(p, '全部', _catId == null, () {
+                              setState(() => _catId = null);
+                            }),
+                            for (final String id in catOrder)
+                              _filterChip(p, catById(id).name, _catId == id, () {
+                                setState(() => _catId = _catId == id ? null : id);
+                              }),
+                          ],
+                        ),
+                      ),
                     Padding(
                       padding: const EdgeInsets.only(left: 4, bottom: 10),
                       child: Text(
@@ -263,6 +291,34 @@ class _SearchPageState extends State<SearchPage> {
           );
         }),
       ],
+    );
+  }
+
+  Widget _filterChip(Palette p, String label, bool on, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 7),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
+          decoration: BoxDecoration(
+            color: on ? p.accent.withOpacity(0.14) : p.card,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: on ? p.accent.withOpacity(0.35) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+              color: on ? p.accent : p.ink2,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

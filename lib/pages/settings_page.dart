@@ -109,7 +109,9 @@ class SettingsPage extends StatelessWidget {
                   icon: Icons.notifications_active_rounded,
                   color: const Color(0xFFFFB74D),
                   title: '记账提醒',
-                  subtitle: '每晚 21:30 提醒我记账',
+                  subtitle: store.reminder
+                      ? '每天 ${store.reminderHour.toString().padLeft(2, '0')}:${store.reminderMinute.toString().padLeft(2, '0')} 提醒 · 点击改时间'
+                      : '已关闭',
                   trailing: _IosSwitch(
                     value: store.reminder,
                     onChanged: (bool v) {
@@ -118,6 +120,7 @@ class SettingsPage extends StatelessWidget {
                       showToast(context, v ? '已开启记账提醒' : '已关闭记账提醒', icon: Icons.notifications_rounded);
                     },
                   ),
+                  onTap: store.reminder ? () => _pickReminderTime(context, store) : null,
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(
@@ -143,6 +146,16 @@ class SettingsPage extends StatelessWidget {
                       store.setHideAmounts(v);
                     },
                   ),
+                ),
+                Divider(height: 1, color: p.line),
+                _tile(
+                  p,
+                  icon: Icons.event_note_rounded,
+                  color: const Color(0xFF26C6DA),
+                  title: '日期资料',
+                  subtitle: '节气与节日标注 · 已内置 2025–2027',
+                  trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
+                  onTap: () => _showDateInfo(context),
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(
@@ -549,6 +562,131 @@ class SettingsPage extends StatelessWidget {
     } catch (_) {
       if (ctxMounted(context)) showToast(context, '导入失败：格式不正确', icon: Icons.error_outline_rounded);
     }
+  }
+
+  Future<void> _showDateInfo(BuildContext context) async {
+    final Palette p = AppScope.paletteOf(context);
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+              ),
+            ),
+            const SizedBox(height: 18),
+            Text('日期资料', style: T.h2(p).copyWith(fontSize: 17)),
+            const SizedBox(height: 10),
+            Text(
+              '日历里的小字来自本机内置数据，不联网、不上传任何账单。',
+              style: TextStyle(fontSize: 12.5, color: p.ink2, height: 1.6),
+            ),
+            const SizedBox(height: 12),
+            _infoRow(p, '二十四节气', '已内置 2025 / 2026 / 2027 三年，按通用历法推算'),
+            _infoRow(p, '公历节日', '元旦、劳动节、国庆、圣诞等 16 个固定日期'),
+            _infoRow(p, '周末', '周六、周日自动标色'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.fromLTRB(11, 9, 11, 9),
+              decoration: BoxDecoration(
+                color: p.expense.withOpacity(0.07),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(Icons.info_outline_rounded, size: 13, color: p.expense),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '法定节假日调休以国务院公告为准，需要官方数据才能准确标注，'
+                      '因此这里不显示「放假 / 补班」，避免误导。',
+                      style: TextStyle(fontSize: 11.5, color: p.ink2, height: 1.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  backgroundColor: p.accent.withOpacity(0.10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+                onPressed: () => Navigator.pop(ctx),
+                child: Text('知道了',
+                    style: TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w700, color: p.accent)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoRow(Palette p, String label, String desc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Container(
+            margin: const EdgeInsets.only(top: 5),
+            width: 5,
+            height: 5,
+            decoration: BoxDecoration(color: p.ink3, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: RichText(
+              text: TextSpan(
+                style: TextStyle(fontSize: 12, color: p.ink2, height: 1.55),
+                children: <TextSpan>[
+                  TextSpan(
+                    text: '$label：',
+                    style: TextStyle(fontWeight: FontWeight.w700, color: p.ink),
+                  ),
+                  TextSpan(text: desc),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickReminderTime(BuildContext context, AppStore store) async {
+    final TimeOfDay? picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: store.reminderHour, minute: store.reminderMinute),
+      helpText: '选择提醒时间',
+      cancelText: '取消',
+      confirmText: '确定',
+    );
+    if (picked == null || !ctxMounted(context)) return;
+    store.setReminderTime(picked.hour, picked.minute);
+    showToast(
+      context,
+      '已设为每天 ${picked.hour.toString().padLeft(2, '0')}:${picked.minute.toString().padLeft(2, '0')}',
+      icon: Icons.schedule_rounded,
+    );
   }
 
   Future<void> _pickRetention(BuildContext context, AppStore store) async {

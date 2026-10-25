@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../theme.dart';
 import 'common.dart';
@@ -171,6 +172,7 @@ class TrendBars extends StatefulWidget {
   final List<String> labels;
   final double height;
   final int highlight;
+  final ValueChanged<int>? onTap;
 
   const TrendBars({
     Key? key,
@@ -178,6 +180,7 @@ class TrendBars extends StatefulWidget {
     required this.labels,
     this.height = 132,
     this.highlight = -1,
+    this.onTap,
   }) : super(key: key);
 
   @override
@@ -225,7 +228,15 @@ class _TrendBarsState extends State<TrendBars> with SingleTickerProviderStateMix
               final double h = (widget.values[i] / maxV) * (widget.height - 46) * t;
               final bool hot = i == widget.highlight;
               return Expanded(
-                child: Padding(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onTap == null
+                      ? null
+                      : () {
+                          HapticFeedback.selectionClick();
+                          widget.onTap!(i);
+                        },
+                  child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.end,
@@ -265,6 +276,7 @@ class _TrendBarsState extends State<TrendBars> with SingleTickerProviderStateMix
                         ),
                       ),
                     ],
+                  ),
                   ),
                 ),
               );

@@ -208,6 +208,30 @@ class _InsightPageState extends State<InsightPage> {
             item.summary,
             style: TextStyle(fontSize: 12, color: p.ink2, height: 1.55),
           ),
+          if (item.guide.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 9),
+            Container(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+              decoration: BoxDecoration(
+                color: p.accent.withOpacity(0.055),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Icon(Icons.lightbulb_outline_rounded,
+                      size: 13, color: p.accent.withOpacity(0.85)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      item.guide,
+                      style: TextStyle(fontSize: 11.5, color: p.ink2, height: 1.5),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 10),
           Row(
             children: <Widget>[
