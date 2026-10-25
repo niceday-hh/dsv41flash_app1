@@ -124,6 +124,25 @@ class AppStore extends ChangeNotifier {
     return out;
   }
 
+  /// 备注词云数据：按使用次数排序（同分类优先，其次全部分类）
+  List<MapEntry<String, int>> noteCloud(String catId, {bool expense = true, int limit = 14}) {
+    final Map<String, int> same = <String, int>{};
+    final Map<String, int> other = <String, int>{};
+    for (final Bill b in _bills) {
+      if (b.expense != expense) continue;
+      final String n = b.note.trim();
+      if (n.isEmpty || n.length > 12) continue;
+      final Map<String, int> target = b.catId == catId ? same : other;
+      target[n] = (target[n] ?? 0) + 1;
+    }
+    final List<MapEntry<String, int>> list = same.entries.toList()
+      ..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
+    final List<MapEntry<String, int>> rest = other.entries.toList()
+      ..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
+    list.addAll(rest);
+    return list.take(limit).toList();
+  }
+
   /// 搜索账单：备注 / 分类名 / 金额
   List<Bill> search(String q) {
     final String key = q.trim().toLowerCase();

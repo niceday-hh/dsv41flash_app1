@@ -799,7 +799,7 @@ class _StatsPageState extends State<StatsPage> {
               Flexible(
                 child: ListView.separated(
                   shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
                   itemCount: items.length,
                   separatorBuilder: (BuildContext c, int i) => Divider(height: 1, color: p.line),
                   itemBuilder: (BuildContext c, int i) {

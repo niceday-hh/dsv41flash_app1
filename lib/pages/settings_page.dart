@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../platform/csv_file.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../ui/common.dart';
@@ -168,10 +169,7 @@ class SettingsPage extends StatelessWidget {
                   title: '导出账单',
                   subtitle: '复制为 CSV 文本，共 ${store.totalCount} 笔',
                   trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
-                  onTap: () async {
-                    await Clipboard.setData(ClipboardData(text: store.exportCsv()));
-                    if (ctxMounted(context)) showToast(context, 'CSV 已复制到剪贴板', icon: Icons.copy_rounded);
-                  },
+                  onTap: () => _exportCsv(context, store),
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(
@@ -181,7 +179,7 @@ class SettingsPage extends StatelessWidget {
                   title: '导入账单',
                   subtitle: '粘贴 CSV 文本，自动识别分类',
                   trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
-                  onTap: () => _importCsv(context, store),
+                  onTap: () => _pickCsvFile(context, store),
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(
@@ -462,6 +460,66 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  Future<void> _exportCsv(BuildContext context, AppStore store) async {
+    final DateTime now = DateTime.now();
+    String two(int v) => v < 10 ? '0$v' : '$v';
+    final String name = '鲸记账_${now.year}${two(now.month)}${two(now.day)}.csv';
+    final String csv = store.exportCsv();
+    if (CsvFileService.supported) {
+      final bool ok = await CsvFileService.save(name, csv);
+      if (ok) {
+        if (ctxMounted(context)) showToast(context, '已保存 $name', icon: Icons.download_done_rounded);
+        return;
+      }
+    }
+    await Clipboard.setData(ClipboardData(text: csv));
+    if (ctxMounted(context)) {
+      showToast(context, CsvFileService.supported ? '已复制到剪贴板（未选择保存位置）' : 'CSV 已复制到剪贴板',
+          icon: Icons.copy_rounded);
+    }
+  }
+
+  Future<void> _pickCsvFile(BuildContext context, AppStore store) async {
+    if (!CsvFileService.supported) {
+      await _importCsv(context, store);
+      return;
+    }
+    final String? text = await CsvFileService.pick();
+    if (!ctxMounted(context)) return;
+    if (text == null || text.trim().isEmpty) return;
+    await _applyImport(context, store, text);
+  }
+
+  Future<void> _applyImport(BuildContext context, AppStore store, String text) async {
+    final Palette p = AppScope.paletteOf(context);
+    final int? mode = await showDialog<int>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        backgroundColor: p.card,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        title: Text('导入方式', style: T.h2(p).copyWith(fontSize: 17)),
+        content: Text('追加到现有账单，或替换全部账单？', style: TextStyle(fontSize: 13, color: p.ink2, height: 1.5)),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx, 0), child: Text('取消', style: TextStyle(color: p.ink2))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 2), child: Text('替换', style: TextStyle(color: p.expense, fontWeight: FontWeight.w700))),
+          TextButton(onPressed: () => Navigator.pop(ctx, 1), child: Text('追加', style: TextStyle(color: p.accent, fontWeight: FontWeight.w700))),
+        ],
+      ),
+    );
+    if (mode == null || mode == 0) return;
+    try {
+      final int n = store.importCsv(text, replace: mode == 2);
+      if (ctxMounted(context)) {
+        showToast(context, n > 0 ? '成功导入 $n 笔账单' : '没有可导入的数据',
+            icon: n > 0 ? Icons.check_circle_rounded : Icons.info_rounded);
+      }
+    } on FormatException catch (e) {
+      if (ctxMounted(context)) showToast(context, '导入失败：${e.message}', icon: Icons.error_outline_rounded);
+    } catch (_) {
+      if (ctxMounted(context)) showToast(context, '导入失败：格式不正确', icon: Icons.error_outline_rounded);
+    }
+  }
+
   Future<void> _importCsv(BuildContext context, AppStore store) async {
     final TextEditingController ctrl = TextEditingController();
     final bool? ok = await showDialog<bool>(
@@ -531,15 +589,7 @@ class SettingsPage extends StatelessWidget {
       },
     );
     if (ok == true) {
-      try {
-        final int n = store.importCsv(ctrl.text);
-        if (ctxMounted(context)) {
-          showToast(context, n > 0 ? '成功导入 $n 笔账单' : '没有可导入的数据',
-              icon: n > 0 ? Icons.check_circle_rounded : Icons.info_rounded);
-        }
-      } catch (e) {
-        if (ctxMounted(context)) showToast(context, '导入失败：格式不正确', icon: Icons.error_outline_rounded);
-      }
+      await _applyImport(context, store, ctrl.text);
     }
   }
 

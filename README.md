@@ -21,11 +21,24 @@
 | 洞察 | 7 类统计分析（环比 / 归因 / 频次×均额 / 周末节奏 / 集中度 / 周期账单 / 预算情景），含计算依据与关联账单 |
 | 日历 | 月历热力图，按日查看收支明细 |
 | 预算 | 月预算环形进度、超支预警、日均可用、分类预算管理 |
-| 我的 | 深色模式、5 套主题色、隐藏金额、昵称、记账提醒、**CSV 导入 / 导出**、数据重置 |
-| 记一笔 | 底部弹层 + 数字键盘，**支持 + − 计算**、**常用备注快捷**、支出/收入切换、12 个分类、备注与日期 |
+| 我的 | 深色模式、5 套主题色、隐藏金额、昵称、记账提醒、**CSV 文件导入 / 导出**、数据重置 |
+| 记一笔 | 底部弹层 + 数字键盘，**支持 + − 计算**、**备注词云**（字号随频次变化）、**语音记账**、支出/收入切换、12 个分类、备注与日期 |
+| 语音 | **完全离线**的中文语音记账：说「午饭二十八块」自动填入金额 / 分类 / 日期；模型随包内置，不联网、不上传 |
 | 数据 | 本地持久化（`shared_preferences`），首次启动自动生成 6 个月演示账单 |
 
 ## 🆕 更新日志
+
+### v1.3.0（补齐 3.1.4 的语音与文件能力）
+- 新增 **离线语音记账**：内置 sherpa-onnx + 中文流式 Zipformer 模型（约 30MB，随 APK 打包）
+  - 原生 16kHz 单声道 PCM 采集（Kotlin `AudioRecord` + EventChannel），无需第三方录音插件
+  - 边说边出字，实时解析「昨天打车二十八块五」→ 金额 / 分类 / 日期 / 收支
+  - 支持中文数字（「两千六百」）、角分（「十五块五」）、相对日期（今天/昨天/前天/大前天）、14 类目关键词推断
+  - 全程本地推理，**不联网、不上传音频**
+- 新增 **备注词云**：按历史使用频次排版，字号与色深随频次变化，点一下即填入
+- 新增 **原生文件导入导出**：Android 通过系统文件选择器读写 CSV（`ACTION_CREATE_DOCUMENT` / `ACTION_OPEN_DOCUMENT`），其余平台自动回退到剪贴板
+- 导入支持「追加 / 替换」两种模式，表头校验失败会给出明确提示
+- 升级构建链：Flutter 3.24 + AGP 8.3 + Gradle 8.6 + SDK 34；APK 仅保留 `arm64-v8a` / `armeabi-v7a`，体积从 193MB 降到 112MB
+- 底栏不透明度提升，修复内容穿透导致的可读性问题；各页底部留白统一
 
 ### v1.2.0（对齐 拾光账本 3.1.4 的能力）
 - 新增 **消费日历**：月历热力格（按当日金额深浅着色）+ 当日明细、最高单日、弹指切换月份
@@ -69,6 +82,8 @@
 
 ## 🚀 本地运行
 
+> 环境要求：**Flutter 3.24+**（Dart 3.5+）、JDK 17、Android SDK 34。语音模块依赖 `sherpa_onnx` 的原生库，需要真机或有麦克风的模拟器。
+
 ```bash
 flutter pub get
 flutter run                 # 连接手机 / 模拟器
@@ -78,15 +93,13 @@ flutter run -d chrome       # 浏览器预览
 ## 📦 构建
 
 ```bash
-# Android APK（需自备 android/key.properties 与 keystore）
-flutter build apk --release
+# Android APK（release 构建需自行配置签名）
+flutter build apk --release --build-name=1.3.0 --build-number=4
 
 # Web（GitHub Pages 路径）
 flutter build web --release --web-renderer html --base-href /dsv41flash_app1/
 rm -f build/web/flutter_service_worker.js   # 关闭 SW，避免 CDN 缓存导致白屏
-
-# 一键发布（Pages + Release）
-GITHUB_TOKEN=xxx ./scripts/deploy.sh
+rm -rf build/web/assets/assets/asr build/web/assets/packages/sherpa_onnx_web   # Web 版不含语音模型
 ```
 
 产物：
@@ -94,35 +107,6 @@ GITHUB_TOKEN=xxx ./scripts/deploy.sh
 - APK：`build/app/outputs/flutter-apk/app-release.apk`
 - Web：`build/web`
 
-
-## 🔐 签名与版本迭代（重要）
-
-App 的升级安装要求**签名证书一致**：换 key 会导致已安装用户无法覆盖升级（必须先卸载）。
-
-| 项目 | 值 |
-| --- | --- |
-| 证书 SHA-256 | `64:4C:DF:1A:C7:AB:B0:55:A4:96:D9:7B:A0:76:11:33:18:7D:25:62:8B:A8:61:AB:EF:12:3D:5F:89:63:6F:93` |
-| Key Alias | `whale` |
-| Keystore 类型 | PKCS12（store 与 key 密码相同） |
-| 有效期 | 2026-10-24 ~ 2054-03-11 |
-
-- 签名文件 `android/key.jks` 与 `android/key.properties` **不提交到仓库**（`.gitignore` 已排除）。
-- CI 构建（`.github/workflows/android-release.yml`）从仓库 Secrets 读取：
-
-| Secret 名称 | 内容 |
-| --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | `base64 -w 0 android/key.jks` 的输出 |
-| `ANDROID_KEYSTORE_PASSWORD` | keystore 密码 |
-| `ANDROID_KEY_PASSWORD` | key 密码（PKCS12 下与上面相同） |
-| `ANDROID_KEY_ALIAS` | `whale` |
-
-配置好后，推送 tag 即自动出包：
-
-```bash
-git tag v1.0.1 && git push origin v1.0.1
-```
-
-> ⚠️ 请把 `android/key.jks` 备份到密码管理器。**丢失后无法再发布可覆盖升级的新版本。**
 
 ## 🗂 项目结构
 

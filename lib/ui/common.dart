@@ -370,6 +370,7 @@ class GlassPanel extends StatelessWidget {
   final double radius;
   final EdgeInsetsGeometry? padding;
   final double blur;
+  final double opacity;
 
   const GlassPanel({
     Key? key,
@@ -377,6 +378,7 @@ class GlassPanel extends StatelessWidget {
     this.radius = 28,
     this.padding,
     this.blur = 22,
+    this.opacity = 0.76,
   }) : super(key: key);
 
   @override
@@ -389,7 +391,9 @@ class GlassPanel extends StatelessWidget {
         child: Container(
           padding: padding,
           decoration: BoxDecoration(
-            color: p.dark ? const Color(0xFF151723).withOpacity(0.86) : Colors.white.withOpacity(0.76),
+            color: p.dark
+                ? Color.lerp(const Color(0xFF151723), const Color(0xFF1B1E2C), opacity)!.withOpacity(opacity + 0.14)
+                : Colors.white.withOpacity(opacity),
             borderRadius: BorderRadius.circular(radius),
             border: Border.all(
               color: p.dark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.85),

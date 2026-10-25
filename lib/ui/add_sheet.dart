@@ -7,10 +7,14 @@ import '../data.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import '../voice/asr_engine.dart' as asr;
+import '../voice/voice_parser.dart';
+import '../voice/voice_sheet.dart';
 import 'common.dart';
 
 /// 打开记账 / 编辑账单面板。传入 [bill] 即为编辑模式。
-Future<bool?> showBillSheet(BuildContext context, {Bill? bill, bool expense = true, String? catId}) {
+Future<bool?> showBillSheet(BuildContext context,
+    {Bill? bill, bool expense = true, String? catId, double? initialAmount, String? initialNote}) {
   final AppStore store = AppScope.storeOf(context);
   return showModalBottomSheet<bool>(
     context: context,
@@ -22,6 +26,8 @@ Future<bool?> showBillSheet(BuildContext context, {Bill? bill, bool expense = tr
       bill: bill,
       initialExpense: bill?.expense ?? expense,
       initialCatId: bill?.catId ?? catId,
+      initialAmount: initialAmount,
+      initialNote: initialNote,
     ),
   );
 }
@@ -34,6 +40,8 @@ class _BillSheet extends StatefulWidget {
   final Bill? bill;
   final bool initialExpense;
   final String? initialCatId;
+  final double? initialAmount;
+  final String? initialNote;
 
   const _BillSheet({
     Key? key,
@@ -41,6 +49,8 @@ class _BillSheet extends StatefulWidget {
     this.bill,
     required this.initialExpense,
     this.initialCatId,
+    this.initialAmount,
+    this.initialNote,
   }) : super(key: key);
 
   @override
@@ -65,7 +75,12 @@ class _BillSheetState extends State<_BillSheet> {
     _expense = b?.expense ?? widget.initialExpense;
     _catId = b?.catId ?? widget.initialCatId ?? catsFor(_expense).first.id;
     _date = b?.date ?? DateTime.now();
-    _noteCtrl = TextEditingController(text: b?.note ?? '');
+    _noteCtrl = TextEditingController(text: b?.note ?? widget.initialNote ?? '');
+    if (b == null && widget.initialAmount != null && widget.initialAmount! > 0) {
+      final double v = widget.initialAmount!;
+      _expr = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+      _evaluated = true;
+    }
     if (b != null) {
       _expr = b.amount == b.amount.roundToDouble()
           ? b.amount.toStringAsFixed(0)
@@ -220,7 +235,7 @@ class _BillSheetState extends State<_BillSheet> {
     final double maxH = MediaQuery.of(context).size.height * 0.92;
     final List<CategoryDef> cats = catsFor(_expense);
     final bool hasOp = _expr.contains('+') || _expr.contains('-');
-    final List<String> notes = widget.store.notesForCategory(_catId, expense: _expense, limit: 6);
+    final List<MapEntry<String, int>> cloud = widget.store.noteCloud(_catId, expense: _expense, limit: 8);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -334,6 +349,41 @@ class _BillSheetState extends State<_BillSheet> {
                             ),
                           ),
                         ),
+                        Pressable(
+                          onTap: () async {
+                            if (!asr.AsrEngine.supported) {
+                              showToast(context, '语音记账目前仅支持 Android 客户端',
+                                  icon: Icons.mic_off_rounded);
+                              return;
+                            }
+                            final VoiceIntent? intent = await showVoiceSheet(context);
+                            if (intent == null || !mounted) return;
+                            setState(() {
+                              _expense = intent.expense;
+                              _catId = intent.catId;
+                              final double v = intent.amount;
+                              _expr = v == v.roundToDouble()
+                                  ? v.toStringAsFixed(0)
+                                  : v.toStringAsFixed(2);
+                              _evaluated = true;
+                              _date = intent.date;
+                              _noteCtrl.text = intent.note;
+                              _noteCtrl.selection =
+                                  TextSelection.collapsed(offset: intent.note.length);
+                            });
+                          },
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            margin: const EdgeInsets.only(left: 8, bottom: 2),
+                            decoration: BoxDecoration(
+                              gradient: p.gradient,
+                              borderRadius: BorderRadius.circular(13),
+                              boxShadow: p.accentGlow,
+                            ),
+                            child: const Icon(Icons.mic_rounded, color: Colors.white, size: 19),
+                          ),
+                        ),
                         if (hasOp)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8, left: 6),
@@ -402,61 +452,54 @@ class _BillSheetState extends State<_BillSheet> {
                         ),
                       ],
                     ),
-                    if (notes.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 10),
-                      SizedBox(
-                        height: 26,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: notes.length,
-                          separatorBuilder: (BuildContext c, int i) => const SizedBox(width: 7),
-                          itemBuilder: (BuildContext context, int i) {
-                            final bool on = _noteCtrl.text == notes[i];
-                            return GestureDetector(
-                              onTap: () {
-                                HapticFeedback.selectionClick();
-                                setState(() {
-                                  _noteCtrl.text = _noteCtrl.text == notes[i] ? '' : notes[i];
-                                  _noteCtrl.selection =
-                                      TextSelection.collapsed(offset: _noteCtrl.text.length);
-                                });
-                              },
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: on ? p.accent.withOpacity(0.12) : p.cardSoft,
-                                  borderRadius: BorderRadius.circular(13),
-                                  border: Border.all(
-                                    color: on ? p.accent.withOpacity(0.4) : Colors.transparent,
-                                  ),
-                                ),
-                                child: Text(
-                                  notes[i],
-                                  style: TextStyle(
-                                    fontSize: 11.5,
-                                    fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                                    color: on ? p.accent : p.ink2,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
+                    if (cloud.isNotEmpty) ...<Widget>[
+                      const SizedBox(height: 12),
+                      Row(
+                        children: <Widget>[
+                          Icon(Icons.cloud_queue_rounded, size: 13, color: p.accent),
+                          const SizedBox(width: 5),
+                          Text(
+                            '常用备注',
+                            style: TextStyle(fontSize: 11, color: p.ink3, fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '点一下即可填入',
+                            style: TextStyle(fontSize: 9.5, color: p.ink3),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 74),
+                        child: SingleChildScrollView(
+                          child: _NoteCloud(
+                        data: cloud,
+                        palette: p,
+                        selected: _noteCtrl.text,
+                        onTap: (String text) {
+                          HapticFeedback.selectionClick();
+                          setState(() {
+                            _noteCtrl.text = _noteCtrl.text == text ? '' : text;
+                            _noteCtrl.selection =
+                                TextSelection.collapsed(offset: _noteCtrl.text.length);
+                          });
+                        },
+                      ),
                         ),
                       ),
                     ],
                     const SizedBox(height: 12),
                     SizedBox(
-                      height: 246,
+                      height: 216,
                       child: GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 4,
-                          mainAxisSpacing: 6,
+                          mainAxisSpacing: 4,
                           crossAxisSpacing: 8,
-                          childAspectRatio: 1.18,
+                          childAspectRatio: 1.32,
                         ),
                         itemCount: cats.length,
                         itemBuilder: (BuildContext context, int i) {
@@ -648,4 +691,62 @@ Future<bool> _confirmDelete(BuildContext context) async {
     ),
   );
   return ok ?? false;
+}
+
+
+/// 备注词云：字号与颜色深浅随使用次数变化
+class _NoteCloud extends StatelessWidget {
+  final List<MapEntry<String, int>> data;
+  final Palette palette;
+  final String selected;
+  final ValueChanged<String> onTap;
+
+  const _NoteCloud({
+    Key? key,
+    required this.data,
+    required this.palette,
+    required this.selected,
+    required this.onTap,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final int maxCount = data.fold<int>(1, (int m, MapEntry<String, int> e) => e.value > m ? e.value : m);
+    return Wrap(
+      spacing: 7,
+      runSpacing: 7,
+      children: data.map((MapEntry<String, int> e) {
+        final double ratio = maxCount <= 1 ? 0.45 : (e.value - 1) / (maxCount - 1);
+        final double font = 11 + ratio * 5.5;
+        final bool on = selected == e.key;
+        final Color base = on ? palette.accent : palette.ink2;
+        return GestureDetector(
+          onTap: () => onTap(e.key),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: EdgeInsets.symmetric(horizontal: 9 + ratio * 3, vertical: 4 + ratio * 2),
+            decoration: BoxDecoration(
+              color: on
+                  ? palette.accent.withOpacity(0.14)
+                  : palette.accent.withOpacity(0.05 + ratio * 0.07),
+              borderRadius: BorderRadius.circular(11),
+              border: Border.all(
+                color: on ? palette.accent.withOpacity(0.45) : Colors.transparent,
+                width: 1.2,
+              ),
+            ),
+            child: Text(
+              e.key,
+              style: TextStyle(
+                fontSize: font,
+                height: 1.1,
+                fontWeight: ratio > 0.55 ? FontWeight.w700 : FontWeight.w500,
+                color: on ? palette.accent : base.withOpacity(0.62 + ratio * 0.38),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
 }

@@ -4,6 +4,10 @@ import 'package:flutter/services.dart';
 import 'pages/budget_page.dart';
 import 'pages/calendar_page.dart';
 import 'pages/insight_page.dart';
+import 'ui/add_sheet.dart';
+import 'voice/asr_engine.dart' as asr;
+import 'voice/voice_parser.dart';
+import 'voice/voice_sheet.dart';
 import 'pages/home_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/stats_page.dart';
@@ -47,6 +51,23 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
     if (ok == true && mounted) showToast(context, '记账成功');
   }
 
+  Future<void> _voice() async {
+    if (!asr.AsrEngine.supported) {
+      showToast(context, '语音记账目前仅支持 Android 客户端', icon: Icons.mic_off_rounded);
+      return;
+    }
+    final VoiceIntent? intent = await showVoiceSheet(context);
+    if (intent == null || !mounted) return;
+    final bool? ok = await showBillSheet(
+      context,
+      expense: intent.expense,
+      catId: intent.catId,
+      initialAmount: intent.amount,
+      initialNote: intent.note,
+    );
+    if (ok == true && mounted) showToast(context, '记账成功');
+  }
+
   @override
   Widget build(BuildContext context) {
     final Palette p = AppScope.paletteOf(context);
@@ -76,6 +97,25 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
                 ),
               ),
             ),
+            // 底部渐隐：让列表在导航栏下方自然淡出，避免半截内容露出
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 116,
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[p.bg.withOpacity(0), p.bg.withOpacity(0.92), p.bg],
+                      stops: const <double>[0, 0.55, 1],
+                    ),
+                  ),
+                ),
+              ),
+            ),
             Positioned(
               left: 16,
               right: 16,
@@ -95,6 +135,8 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
   Widget _navBar(Palette p) {
     return GlassPanel(
       radius: 28,
+      opacity: 0.99,
+      blur: 26,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
       child: Row(
         children: <Widget>[
@@ -175,6 +217,15 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
                     _add();
                   }),
                   const SizedBox(width: 10),
+                  _quickTile(p, '语音记账', Icons.mic_rounded, const Color(0xFFF4576E), () {
+                    Navigator.pop(ctx);
+                    _voice();
+                  }),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: <Widget>[
                   _quickTile(p, '消费日历', Icons.calendar_month_rounded, const Color(0xFF4DB6AC), () {
                     Navigator.pop(ctx);
                     Navigator.of(context).push(_fadeRoute(const CalendarPage()));

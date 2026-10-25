@@ -148,7 +148,7 @@ class BudgetPage extends StatelessWidget {
             onAction: () => _addCategoryBudget(context, store),
           ),
           SoftCard(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
             child: Column(
               children: <Widget>[
                 if (store.budgets.isEmpty)
