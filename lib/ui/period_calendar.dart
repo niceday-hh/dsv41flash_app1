@@ -20,6 +20,7 @@ class PeriodCalendar extends StatelessWidget {
     required this.periodIndex,
     required this.bills,
     required this.expense,
+    this.onMonthTap,
   }) : super(key: key);
 
   final DateTime start;
@@ -27,6 +28,9 @@ class PeriodCalendar extends StatelessWidget {
   final int periodIndex;
   final List<Bill> bills;
   final bool expense;
+
+  /// 季 / 年缩略网格中点某个月时触发（通常跳到该月全页日历）
+  final ValueChanged<DateTime>? onMonthTap;
 
   @override
   Widget build(BuildContext context) {
@@ -244,14 +248,22 @@ class PeriodCalendar extends StatelessWidget {
               for (int d = 1; d <= days; d++) {
                 total += totals[_dayKey(DateTime(m.year, m.month, d))] ?? 0;
               }
-              return SizedBox(
+              final Widget block = SizedBox(
                 width: compact ? 78 : 104,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('${m.month}月',
-                        style: TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w700, color: p.ink2)),
+                    Row(
+                      children: <Widget>[
+                        Text('${m.month}月',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w700, color: p.ink2)),
+                        if (onMonthTap != null) ...<Widget>[
+                          const SizedBox(width: 2),
+                          Icon(Icons.north_east_rounded, size: 9, color: p.ink3),
+                        ],
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     GridView.count(
                       crossAxisCount: 7,
@@ -283,6 +295,12 @@ class PeriodCalendar extends StatelessWidget {
                     ),
                   ],
                 ),
+              );
+              if (onMonthTap == null) return block;
+              return GestureDetector(
+                onTap: () => onMonthTap!(m),
+                behavior: HitTestBehavior.opaque,
+                child: block,
               );
             }).toList(),
           ),

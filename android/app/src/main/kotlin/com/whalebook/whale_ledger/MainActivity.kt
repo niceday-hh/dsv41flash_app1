@@ -8,6 +8,7 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.net.Uri
+import android.os.Build
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -24,14 +25,19 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
 
     private val channelName = "whale_ledger/csv"
     private val micChannelName = "whale_ledger/mic"
+    private val reminderChannelName = "whale_ledger/reminder"
     private val micEventName = "whale_ledger/mic_stream"
     private val micPermissionCode = 4303
+    private val notifPermissionCode = 4304
 
     private var eventSink: EventChannel.EventSink? = null
     private var audioRecord: AudioRecord? = null
     private var recordThread: Thread? = null
     @Volatile private var recording = false
     private var permissionResult: MethodChannel.Result? = null
+    private var notifResult: MethodChannel.Result? = null
+    private var pendingHour = 21
+    private var pendingMinute = 30
     private val requestSave = 4301
     private val requestPick = 4302
 
@@ -93,6 +99,42 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
                             clearPending()
                             result.error("no_picker", e.message, null)
                         }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, reminderChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "schedule" -> {
+                        val hour = call.argument<Int>("hour") ?: 21
+                        val minute = call.argument<Int>("minute") ?: 30
+                        pendingHour = hour
+                        pendingMinute = minute
+                        ReminderScheduler.ensureChannel(this)
+                        if (Build.VERSION.SDK_INT >= 33 && !ReminderScheduler.hasPermission(this)) {
+                            notifResult = result
+                            ActivityCompat.requestPermissions(
+                                this,
+                                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                                notifPermissionCode
+                            )
+                        } else {
+                            ReminderScheduler.schedule(this, hour, minute)
+                            result.success(true)
+                        }
+                    }
+                    "cancel" -> {
+                        ReminderScheduler.cancel(this)
+                        result.success(true)
+                    }
+                    "test" -> {
+                        ReminderScheduler.notifyNow(this)
+                        result.success(ReminderScheduler.hasPermission(this))
+                    }
+                    "restore" -> {
+                        ReminderScheduler.restoreIfEnabled(this)
+                        result.success(true)
                     }
                     else -> result.notImplemented()
                 }
@@ -235,6 +277,16 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             } else {
                 pending?.success(false)
             }
+            return
+        }
+        if (requestCode == notifPermissionCode) {
+            val pending = notifResult
+            notifResult = null
+            val granted = grantResults.isNotEmpty() &&
+                grantResults[0] == PackageManager.PERMISSION_GRANTED
+            // 即使用户拒绝，也先登记闹钟：之后在系统设置里打开权限就能收到
+            ReminderScheduler.schedule(this, pendingHour, pendingMinute)
+            pending?.success(granted)
         }
     }
 

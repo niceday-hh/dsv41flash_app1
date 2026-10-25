@@ -11,6 +11,7 @@ import '../voice/asr_engine.dart' as asr;
 import '../voice/voice_parser.dart';
 import '../voice/voice_sheet.dart';
 import 'common.dart';
+import 'note_picker.dart';
 
 /// 打开记账 / 编辑账单面板。传入 [bill] 即为编辑模式。
 Future<bool?> showBillSheet(BuildContext context,
@@ -322,13 +323,30 @@ class _BillSheetState extends State<_BillSheet> {
     if (d != null) setState(() => _date = d);
   }
 
+  /// 点备注 → 收起数字键盘，弹出词云选择器（键盘被临时遮住）
+  Future<void> _openNotePicker() async {
+    HapticFeedback.selectionClick();
+    FocusScope.of(context).unfocus();
+    final String? text = await showNotePicker(
+      context,
+      store: widget.store,
+      catId: _catId,
+      expense: _expense,
+      initial: _noteCtrl.text,
+    );
+    if (text == null || !mounted) return;
+    setState(() {
+      _noteCtrl.text = text;
+      _noteCtrl.selection = TextSelection.collapsed(offset: text.length);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final Palette p = AppScope.paletteOf(context);
     final double maxH = MediaQuery.of(context).size.height * 0.92;
     final List<CategoryDef> cats = catsFor(_expense);
     final bool hasOp = _expr.contains('+') || _expr.contains('-');
-    final List<MapEntry<String, int>> cloud = widget.store.noteCloud(_catId, expense: _expense, limit: 8);
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -498,7 +516,10 @@ class _BillSheetState extends State<_BillSheet> {
                     Row(
                       children: <Widget>[
                         Expanded(
-                          child: Container(
+                          child: GestureDetector(
+                            onTap: _openNotePicker,
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
                             height: 40,
                             padding: const EdgeInsets.symmetric(horizontal: 14),
                             decoration: BoxDecoration(
@@ -506,19 +527,25 @@ class _BillSheetState extends State<_BillSheet> {
                               borderRadius: BorderRadius.circular(13),
                             ),
                             child: Center(
-                              child: TextField(
+                              child: IgnorePointer(
+                                child: TextField(
                                 controller: _noteCtrl,
+                                readOnly: true,
                                 style: TextStyle(fontSize: 13, color: p.ink, fontWeight: FontWeight.w500),
                                 cursorColor: p.accent,
-                                textInputAction: TextInputAction.done,
                                 decoration: InputDecoration(
                                   isDense: true,
                                   border: InputBorder.none,
                                   hintText: '写点备注…',
                                   hintStyle: TextStyle(fontSize: 13, color: p.ink3),
+                                  suffixIcon: Icon(Icons.auto_awesome_rounded, size: 14, color: p.ink3),
+                                  suffixIconConstraints:
+                                      const BoxConstraints(minWidth: 20, minHeight: 20),
                                 ),
                               ),
+                              ),
                             ),
+                          ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -545,29 +572,6 @@ class _BillSheetState extends State<_BillSheet> {
                         ),
                       ],
                     ),
-                    if (cloud.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 8),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 38),
-                        child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: _NoteCloud(
-                        data: cloud,
-                        palette: p,
-                        wrap: false,
-                        selected: _noteCtrl.text,
-                        onTap: (String text) {
-                          HapticFeedback.selectionClick();
-                          setState(() {
-                            _noteCtrl.text = _noteCtrl.text == text ? '' : text;
-                            _noteCtrl.selection =
-                                TextSelection.collapsed(offset: _noteCtrl.text.length);
-                          });
-                        },
-                      ),
-                        ),
-                      ),
-                    ],
                     const SizedBox(height: 8),
                     SizedBox(
                       height: 136,
@@ -793,107 +797,4 @@ Future<bool> _confirmDelete(BuildContext context) async {
     ),
   );
   return ok ?? false;
-}
-
-
-/// 备注词云：字号与颜色深浅随使用次数变化
-class _NoteCloud extends StatelessWidget {
-  final List<MapEntry<String, int>> data;
-  final Palette palette;
-  final String selected;
-  final ValueChanged<String> onTap;
-  final bool wrap;
-
-  const _NoteCloud({
-    Key? key,
-    required this.data,
-    required this.palette,
-    required this.selected,
-    required this.onTap,
-    this.wrap = true,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final int maxCount = data.fold<int>(1, (int m, MapEntry<String, int> e) => e.value > m ? e.value : m);
-    final List<Widget> chips = data.map((MapEntry<String, int> e) {
-      final double ratio = maxCount <= 1 ? 0.45 : (e.value - 1) / (maxCount - 1);
-      final double font = 11 + ratio * 5.5;
-      final bool on = selected == e.key;
-      final Color base = on ? palette.accent : palette.ink2;
-      return GestureDetector(
-        onTap: () => onTap(e.key),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: EdgeInsets.symmetric(horizontal: 9 + ratio * 3, vertical: 4 + ratio * 2),
-          decoration: BoxDecoration(
-            color: on
-                ? palette.accent.withOpacity(0.14)
-                : palette.accent.withOpacity(0.05 + ratio * 0.07),
-            borderRadius: BorderRadius.circular(11),
-            border: Border.all(
-              color: on ? palette.accent.withOpacity(0.45) : Colors.transparent,
-              width: 1.2,
-            ),
-          ),
-          child: Text(
-            e.key,
-            style: TextStyle(
-              fontSize: font,
-              height: 1.1,
-              fontWeight: ratio > 0.55 ? FontWeight.w700 : FontWeight.w500,
-              color: on ? palette.accent : base.withOpacity(0.62 + ratio * 0.38),
-            ),
-          ),
-        ),
-      );
-    }).toList();
-
-    if (!wrap) {
-      return Row(
-        children: <Widget>[
-          for (int i = 0; i < chips.length; i++) ...<Widget>[
-            if (i > 0) const SizedBox(width: 7),
-            chips[i],
-          ],
-        ],
-      );
-    }
-    return Wrap(
-      spacing: 7,
-      runSpacing: 7,
-      children: data.map((MapEntry<String, int> e) {
-        final double ratio = maxCount <= 1 ? 0.45 : (e.value - 1) / (maxCount - 1);
-        final double font = 11 + ratio * 5.5;
-        final bool on = selected == e.key;
-        final Color base = on ? palette.accent : palette.ink2;
-        return GestureDetector(
-          onTap: () => onTap(e.key),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: EdgeInsets.symmetric(horizontal: 9 + ratio * 3, vertical: 4 + ratio * 2),
-            decoration: BoxDecoration(
-              color: on
-                  ? palette.accent.withOpacity(0.14)
-                  : palette.accent.withOpacity(0.05 + ratio * 0.07),
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(
-                color: on ? palette.accent.withOpacity(0.45) : Colors.transparent,
-                width: 1.2,
-              ),
-            ),
-            child: Text(
-              e.key,
-              style: TextStyle(
-                fontSize: font,
-                height: 1.1,
-                fontWeight: ratio > 0.55 ? FontWeight.w700 : FontWeight.w500,
-                color: on ? palette.accent : base.withOpacity(0.62 + ratio * 0.38),
-              ),
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
 }

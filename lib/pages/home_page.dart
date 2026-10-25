@@ -9,6 +9,7 @@ import '../store.dart';
 import '../theme.dart';
 import '../ui/add_sheet.dart';
 import '../ui/amount_keypad.dart';
+import '../ui/category_picker.dart';
 import '../ui/note_picker.dart';
 import 'calendar_page.dart';
 import 'search_page.dart';
@@ -478,6 +479,28 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
         ),
+        if (!_isCurrentMonth) ...<Widget>[
+          const SizedBox(width: 4),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              final DateTime now = DateTime.now();
+              setState(() => _month = DateTime(now.year, now.month, 1));
+            },
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: const Text(
+                '回到本月',
+                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -617,7 +640,6 @@ class _HomePageState extends State<HomePage> {
       },
       child: Pressable(
         scale: 0.99,
-        onTap: () => _openEdit(b),
         onLongPress: () => _showActions(b),
         child: Container(
           color: Colors.transparent,
@@ -628,13 +650,15 @@ class _HomePageState extends State<HomePage> {
               GestureDetector(
                 onTap: () => _editCategory(b),
                 behavior: HitTestBehavior.opaque,
-                child: CatBubble(cat: c, size: 40, iconSize: 19),
+                child: Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: CatBubble(cat: c, size: 40, iconSize: 19),
+                ),
               ),
-              const SizedBox(width: 12),
-              // 点标题/副标题 → 只改备注
+              // 点标题/副标题 → 打开编辑整笔
               Expanded(
                 child: GestureDetector(
-                  onTap: () => _editNote(b),
+                  onTap: () => _openEdit(b),
                   behavior: HitTestBehavior.opaque,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -686,55 +710,12 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _editCategory(Bill b) async {
     HapticFeedback.selectionClick();
-    final Palette p = AppScope.paletteOf(context);
     final AppStore store = AppScope.storeOf(context);
-    final List<CategoryDef> cats = catsFor(b.expense);
-    final String? picked = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) => Container(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
-        decoration: BoxDecoration(
-          color: p.card,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text('更换分类', style: T.h2(p).copyWith(fontSize: 16)),
-            const SizedBox(height: 14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: cats.map((CategoryDef c) {
-                final bool on = c.id == b.catId;
-                return GestureDetector(
-                  onTap: () => Navigator.pop(ctx, c.id),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: on ? c.color.withOpacity(0.16) : p.cardSoft,
-                      borderRadius: BorderRadius.circular(13),
-                      border: Border.all(color: on ? c.color : Colors.transparent, width: 1.4),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(c.icon, size: 15, color: c.color),
-                        const SizedBox(width: 6),
-                        Text(c.name,
-                            style: TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w600, color: p.ink)),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
+    final String? picked = await showCategoryPicker(
+      context,
+      expense: b.expense,
+      current: b.catId,
+      recent: store.recentCatIds(expense: b.expense),
     );
     if (picked == null || picked == b.catId || !mounted) return;
     store.updateBill(b.copyWith(catId: picked));
@@ -828,6 +809,17 @@ class _HomePageState extends State<HomePage> {
                 onTap: () {
                   Navigator.pop(ctx);
                   _showDetail(b);
+                },
+              ),
+              const SizedBox(height: 10),
+              _actionTile(
+                p,
+                icon: Icons.short_text_rounded,
+                color: p.income,
+                label: '只改备注',
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _editNote(b);
                 },
               ),
               const SizedBox(height: 10),

@@ -11,6 +11,7 @@ import '../ui/add_sheet.dart';
 import '../ui/charts.dart';
 import '../ui/common.dart';
 import '../ui/period_calendar.dart';
+import 'calendar_page.dart';
 import 'insight_page.dart';
 
 const List<String> _periodNames = <String>['周', '月', '季', '年'];
@@ -105,6 +106,24 @@ class _StatsPageState extends State<StatsPage> {
       }
       _selected = -1;
     });
+  }
+
+  void _openMonth(DateTime m) {
+    HapticFeedback.selectionClick();
+    Navigator.of(context).push(PageRouteBuilder<bool>(
+      pageBuilder: (BuildContext c, Animation<double> a, Animation<double> s) =>
+          CalendarPage(initialMonth: m),
+      transitionsBuilder: (BuildContext c, Animation<double> a, Animation<double> s, Widget child) {
+        return FadeTransition(
+          opacity: a,
+          child: SlideTransition(
+            position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
+                .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+            child: child,
+          ),
+        );
+      },
+    ));
   }
 
   void _backToCurrent() {
@@ -254,18 +273,36 @@ class _StatsPageState extends State<StatsPage> {
           const SizedBox(height: 14),
           _periodBar(p),
           const SizedBox(height: 10),
-          Center(
-            child: Segmented(
-              labels: const <String>['统计', '日历'],
-              index: _view,
-              compact: true,
-              segWidth: 62,
-              onChanged: (int i) {
-                if (i == _view) return;
-                HapticFeedback.selectionClick();
-                setState(() => _view = i);
-              },
-            ),
+          Row(
+            children: <Widget>[
+              Segmented(
+                labels: const <String>['支出分析', '收入分析'],
+                index: _expense ? 0 : 1,
+                compact: true,
+                segWidth: 66,
+                onChanged: (int i) {
+                  if ((i == 0) == _expense) return;
+                  HapticFeedback.selectionClick();
+                  setState(() {
+                    _expense = i == 0;
+                    _selected = -1;
+                    _point = -1;
+                  });
+                },
+              ),
+              const Spacer(),
+              Segmented(
+                labels: const <String>['统计', '日历'],
+                index: _view,
+                compact: true,
+                segWidth: 56,
+                onChanged: (int i) {
+                  if (i == _view) return;
+                  HapticFeedback.selectionClick();
+                  setState(() => _view = i);
+                },
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           if (_view == 1) ...<Widget>[
@@ -275,6 +312,7 @@ class _StatsPageState extends State<StatsPage> {
               periodIndex: _period,
               bills: store.bills,
               expense: _expense,
+              onMonthTap: _openMonth,
             ),
             const SizedBox(height: 10),
             Center(
@@ -287,105 +325,20 @@ class _StatsPageState extends State<StatsPage> {
           if (_view == 0) ...<Widget>[
             _totalCard(p, store, total, delta, count, days),
           const SizedBox(height: 14),
-          SoftCard(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-            child: Column(
+          if (MediaQuery.sizeOf(context).width >= 600)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Text('分类占比', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink)),
-                    const Spacer(),
-                    Segmented(
-                      labels: const <String>['支出', '收入'],
-                      index: _expense ? 0 : 1,
-                      compact: true,
-                      segWidth: 46,
-                      onChanged: (int i) {
-                        setState(() {
-                          _expense = i == 0;
-                          _selected = -1;
-                          _point = -1;
-                        });
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                if (slices.isEmpty)
-                  const EmptyState(
-                    title: '暂无数据',
-                    desc: '记录几笔账单后即可查看分类占比',
-                    icon: Icons.pie_chart_rounded,
-                  )
-                else
-                  Row(
-                    children: <Widget>[
-                      DonutChart(
-                        slices: slices,
-                        size: 152,
-                        stroke: 17,
-                        selected: _selected,
-                        onSelect: (int i) => setState(() => _selected = i),
-                        center: _donutCenter(p, store, slices, total),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          children: List<Widget>.generate(slices.length, (int i) {
-                            final DonutSlice s = slices[i];
-                            final bool on = _selected == i;
-                            final double pct = total == 0 ? 0 : s.value / total * 100;
-                            return GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTap: () => setState(() => _selected = _selected == i ? -1 : i),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 200),
-                                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
-                                decoration: BoxDecoration(
-                                  color: on ? s.color.withOpacity(0.10) : Colors.transparent,
-                                  borderRadius: BorderRadius.circular(9),
-                                ),
-                                child: Row(
-                                  children: <Widget>[
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
-                                    ),
-                                    const SizedBox(width: 7),
-                                    Expanded(
-                                      child: Text(
-                                        s.label,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                                          color: p.ink2,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    Text(
-                                      '${pct.toStringAsFixed(pct >= 10 ? 0 : 1)}%',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w600,
-                                        color: on ? p.ink : p.ink3,
-                                        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-                          }),
-                        ),
-                      ),
-                    ],
-                  ),
+                Expanded(child: _donutCard(p, store, slices, total)),
+                const SizedBox(width: 14),
+                Expanded(child: _rankCard(p, store, ranked, bills, total)),
               ],
-            ),
-          ),
+            )
+          else ...<Widget>[
+            _donutCard(p, store, slices, total),
+            const SizedBox(height: 14),
+            _rankCard(p, store, ranked, bills, total),
+          ],
           const SizedBox(height: 14),
           SoftCard(
             child: Column(
@@ -458,113 +411,6 @@ class _StatsPageState extends State<StatsPage> {
             ),
           ),
           const SizedBox(height: 14),
-          SoftCard(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    Text('分类排行', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink)),
-                    const Spacer(),
-                    Text(ranked.isEmpty ? '' : '点击查看明细', style: TextStyle(fontSize: 11, color: p.ink3)),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                if (ranked.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: Center(
-                      child: Text('暂无数据', style: TextStyle(fontSize: 12.5, color: p.ink3)),
-                    ),
-                  )
-                else
-                  ...ranked.take(6).toList().asMap().entries.map((MapEntry<int, MapEntry<String, double>> e) {
-                    final int i = e.key;
-                    final CategoryDef c = catById(e.value.key);
-                    final double pct = total == 0 ? 0 : e.value.value / total;
-                    return Pressable(
-                      onTap: () => _drillDown(context, store, c, bills),
-                      scale: 0.99,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: Row(
-                          children: <Widget>[
-                            SizedBox(
-                              width: 15,
-                              child: Text(
-                                '${i + 1}',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: i < 3 ? p.accent : p.ink3,
-                                  height: 1,
-                                ),
-                              ),
-                            ),
-                            CatBubble(cat: c, size: 36, iconSize: 17),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: <Widget>[
-                                  Row(
-                                    children: <Widget>[
-                                      Text(
-                                        c.name,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: p.ink,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${(pct * 100).toStringAsFixed(1)}%',
-                                        style: TextStyle(fontSize: 10.5, color: p.ink3),
-                                      ),
-                                      const Spacer(),
-                                      Text(
-                                        store.money(e.value.value),
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: p.ink,
-                                          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 2),
-                                      Icon(Icons.chevron_right_rounded, size: 15, color: p.ink3),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 7),
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(4),
-                                    child: TweenAnimationBuilder<double>(
-                                      tween: Tween<double>(begin: 0, end: pct.clamp(0.0, 1.0)),
-                                      duration: Duration(milliseconds: 600 + i * 90),
-                                      curve: Curves.easeOutCubic,
-                                      builder: (BuildContext context, double v, Widget? _) {
-                                        return LinearProgressIndicator(
-                                          value: v,
-                                          minHeight: 5,
-                                          backgroundColor:
-                                              p.dark ? Colors.white.withOpacity(0.06) : const Color(0xFFF1F1F7),
-                                          valueColor: AlwaysStoppedAnimation<Color>(c.color),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-              ],
-            ),
-          ),
           const SizedBox(height: 14),
           Pressable(
             onTap: () {
@@ -826,8 +672,7 @@ class _StatsPageState extends State<StatsPage> {
   void _drillDown(BuildContext context, AppStore store, CategoryDef cat, List<Bill> periodBills) {
     final List<Bill> items = periodBills
         .where((Bill b) => b.catId == cat.id && b.expense == _expense)
-        .toList()
-      ..sort((Bill a, Bill b) => b.date.compareTo(a.date));
+        .toList();
     final double sum = AppStore.total(items, expense: _expense);
     HapticFeedback.selectionClick();
     showModalBottomSheet<void>(
@@ -836,107 +681,390 @@ class _StatsPageState extends State<StatsPage> {
       backgroundColor: Colors.transparent,
       builder: (BuildContext ctx) {
         final Palette p = AppScope.paletteOf(ctx);
-        return Container(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
-          decoration: BoxDecoration(
-            color: p.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                margin: const EdgeInsets.only(top: 12),
-                width: 40,
-                height: 5,
-                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+        int sort = 0;
+        return StatefulBuilder(
+          builder: (BuildContext ctx2, StateSetter setSheet) {
+            final List<Bill> sorted = List<Bill>.of(items);
+            switch (sort) {
+              case 1:
+                sorted.sort((Bill a, Bill b) => a.date.compareTo(b.date));
+                break;
+              case 2:
+                sorted.sort((Bill a, Bill b) => b.amount.compareTo(a.amount));
+                break;
+              case 3:
+                sorted.sort((Bill a, Bill b) => a.amount.compareTo(b.amount));
+                break;
+              default:
+                sorted.sort((Bill a, Bill b) => b.date.compareTo(a.date));
+            }
+            return Container(
+              constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
+              decoration: BoxDecoration(
+                color: p.card,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-                child: Row(
-                  children: <Widget>[
-                    CatBubble(cat: cat, size: 44, iconSize: 21),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                    child: Row(
                       children: <Widget>[
-                        Text(cat.name, style: T.h2(p).copyWith(fontSize: 17)),
-                        const SizedBox(height: 2),
-                        Text(
-                          '${items.length} 笔 · ${store.money(sum)}',
-                          style: TextStyle(fontSize: 11.5, color: p.ink2),
+                        CatBubble(cat: cat, size: 44, iconSize: 21),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(cat.name, style: T.h2(p).copyWith(fontSize: 17)),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${items.length} 笔 · ${store.money(sum)}',
+                              style: TextStyle(fontSize: 11.5, color: p.ink2),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Pressable(
+                          onTap: () => Navigator.pop(ctx),
+                          child: Container(
+                            width: 30,
+                            height: 30,
+                            decoration:
+                                BoxDecoration(color: p.cardSoft, borderRadius: BorderRadius.circular(15)),
+                            child: Icon(Icons.close_rounded, size: 16, color: p.ink2),
+                          ),
                         ),
                       ],
                     ),
+                  ),
+                  SizedBox(
+                    height: 30,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      children: <Widget>[
+                        _sortChip(p, '时间新→旧', 0, sort, (int v) => setSheet(() => sort = v)),
+                        _sortChip(p, '时间旧→新', 1, sort, (int v) => setSheet(() => sort = v)),
+                        _sortChip(p, '金额高→低', 2, sort, (int v) => setSheet(() => sort = v)),
+                        _sortChip(p, '金额低→高', 3, sort, (int v) => setSheet(() => sort = v)),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 20, color: p.line),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 120),
+                      itemCount: sorted.length,
+                      separatorBuilder: (BuildContext c, int i) => Divider(height: 1, color: p.line),
+                      itemBuilder: (BuildContext c, int i) {
+                        final Bill b = sorted[i];
+                        final double pct = sum <= 0 ? 0 : b.amount / sum * 100;
+                        return Pressable(
+                          onTap: () async {
+                            Navigator.pop(ctx);
+                            final bool? ok = await showBillSheet(context, bill: b);
+                            if (ok == true && mounted) showToast(context, '账单已更新');
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Row(
+                              children: <Widget>[
+                                Text(
+                                  '${b.date.month}/${b.date.day}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: p.ink3,
+                                    fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    b.note.isEmpty ? cat.name : b.note,
+                                    style:
+                                        TextStyle(fontSize: 13, color: p.ink, fontWeight: FontWeight.w500),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Text(
+                                  '${pct.toStringAsFixed(0)}%',
+                                  style: TextStyle(fontSize: 10.5, color: p.ink3),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  store.money(b.amount),
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: p.ink,
+                                    fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _donutCard(Palette p, AppStore store, List<DonutSlice> slices, double total) {
+    return SoftCard(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+            child: Column(
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Text('分类占比', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink)),
                     const Spacer(),
-                    Pressable(
-                      onTap: () => Navigator.pop(ctx),
-                      child: Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(color: p.cardSoft, borderRadius: BorderRadius.circular(15)),
-                        child: Icon(Icons.close_rounded, size: 16, color: p.ink2),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: (_expense ? p.expense : p.income).withOpacity(0.10),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        _expense ? '支出' : '收入',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w700,
+                          color: _expense ? p.expense : p.income,
+                        ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              Divider(height: 1, color: p.line),
-              Flexible(
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
-                  itemCount: items.length,
-                  separatorBuilder: (BuildContext c, int i) => Divider(height: 1, color: p.line),
-                  itemBuilder: (BuildContext c, int i) {
-                    final Bill b = items[i];
+                const SizedBox(height: 8),
+                if (slices.isEmpty)
+                  const EmptyState(
+                    title: '暂无数据',
+                    desc: '记录几笔账单后即可查看分类占比',
+                    icon: Icons.pie_chart_rounded,
+                  )
+                else
+                  Row(
+                    children: <Widget>[
+                      DonutChart(
+                        slices: slices,
+                        size: 152,
+                        stroke: 17,
+                        selected: _selected,
+                        onSelect: (int i) => setState(() => _selected = i),
+                        center: _donutCenter(p, store, slices, total),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          children: List<Widget>.generate(slices.length, (int i) {
+                            final DonutSlice s = slices[i];
+                            final bool on = _selected == i;
+                            final double pct = total == 0 ? 0 : s.value / total * 100;
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => setState(() => _selected = _selected == i ? -1 : i),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 6),
+                                decoration: BoxDecoration(
+                                  color: on ? s.color.withOpacity(0.10) : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(9),
+                                ),
+                                child: Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(color: s.color, shape: BoxShape.circle),
+                                    ),
+                                    const SizedBox(width: 7),
+                                    Expanded(
+                                      child: Text(
+                                        s.label,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                                          color: p.ink2,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    Text(
+                                      '${pct.toStringAsFixed(pct >= 10 ? 0 : 1)}%',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: on ? p.ink : p.ink3,
+                                        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          );
+  }
+
+  Widget _rankCard(Palette p, AppStore store, List<MapEntry<String, double>> ranked, List<Bill> bills, double total) {
+    return SoftCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Text('分类排行', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink)),
+                    const Spacer(),
+                    Text(ranked.isEmpty ? '' : '点击查看明细', style: TextStyle(fontSize: 11, color: p.ink3)),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                if (ranked.isEmpty)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: Center(
+                      child: Text('暂无数据', style: TextStyle(fontSize: 12.5, color: p.ink3)),
+                    ),
+                  )
+                else
+                  ...ranked.take(6).toList().asMap().entries.map((MapEntry<int, MapEntry<String, double>> e) {
+                    final int i = e.key;
+                    final CategoryDef c = catById(e.value.key);
+                    final double pct = total == 0 ? 0 : e.value.value / total;
                     return Pressable(
-                      onTap: () async {
-                        Navigator.pop(ctx);
-                        final bool? ok = await showBillSheet(context, bill: b);
-                        if (ok == true && mounted) showToast(context, '账单已更新');
-                      },
+                      onTap: () => _drillDown(context, store, c, bills),
+                      scale: 0.99,
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        padding: const EdgeInsets.only(bottom: 14),
                         child: Row(
                           children: <Widget>[
-                            Text(
-                              '${b.date.month}/${b.date.day}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: p.ink3,
-                                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
+                            SizedBox(
+                              width: 15,
                               child: Text(
-                                b.note.isEmpty ? cat.name : b.note,
-                                style: TextStyle(fontSize: 13, color: p.ink, fontWeight: FontWeight.w500),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                                '${i + 1}',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: i < 3 ? p.accent : p.ink3,
+                                  height: 1,
+                                ),
                               ),
                             ),
-                            Text(
-                              store.money(b.amount),
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: p.ink,
-                                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                            CatBubble(cat: c, size: 36, iconSize: 17),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Row(
+                                    children: <Widget>[
+                                      Text(
+                                        c.name,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: p.ink,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        '${(pct * 100).toStringAsFixed(1)}%',
+                                        style: TextStyle(fontSize: 10.5, color: p.ink3),
+                                      ),
+                                      const Spacer(),
+                                      Text(
+                                        store.money(e.value.value),
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: p.ink,
+                                          fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 2),
+                                      Icon(Icons.chevron_right_rounded, size: 15, color: p.ink3),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 7),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: TweenAnimationBuilder<double>(
+                                      tween: Tween<double>(begin: 0, end: pct.clamp(0.0, 1.0)),
+                                      duration: Duration(milliseconds: 600 + i * 90),
+                                      curve: Curves.easeOutCubic,
+                                      builder: (BuildContext context, double v, Widget? _) {
+                                        return LinearProgressIndicator(
+                                          value: v,
+                                          minHeight: 5,
+                                          backgroundColor:
+                                              p.dark ? Colors.white.withOpacity(0.06) : const Color(0xFFF1F1F7),
+                                          valueColor: AlwaysStoppedAnimation<Color>(c.color),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
                     );
-                  },
-                ),
-              ),
-            ],
+                  }),
+              ],
+            ),
+          );
+  }
+
+  Widget _sortChip(Palette p, String label, int value, int current, ValueChanged<int> onTap) {
+    final bool on = value == current;
+    return Padding(
+      padding: const EdgeInsets.only(right: 7),
+      child: GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          onTap(value);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: on ? p.accent.withOpacity(0.12) : p.cardSoft,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: on ? p.accent.withOpacity(0.5) : Colors.transparent, width: 1.2),
           ),
-        );
-      },
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+              color: on ? p.accent : p.ink2,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

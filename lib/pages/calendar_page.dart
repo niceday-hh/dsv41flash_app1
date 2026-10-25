@@ -12,7 +12,10 @@ import '../ui/common.dart';
 
 /// 消费日历：月历热力 + 当日明细
 class CalendarPage extends StatefulWidget {
-  const CalendarPage({Key? key}) : super(key: key);
+  const CalendarPage({Key? key, this.initialMonth}) : super(key: key);
+
+  /// 指定进入时展示的月份（用于从季度 / 年度缩略网格点进来）
+  final DateTime? initialMonth;
 
   @override
   State<CalendarPage> createState() => _CalendarPageState();
@@ -26,8 +29,9 @@ class _CalendarPageState extends State<CalendarPage> {
   void initState() {
     super.initState();
     final DateTime now = DateTime.now();
-    _month = DateTime(now.year, now.month, 1);
-    _selected = now.day;
+    final DateTime base = widget.initialMonth ?? now;
+    _month = DateTime(base.year, base.month, 1);
+    _selected = (base.year == now.year && base.month == now.month) ? now.day : 0;
   }
 
   void _shift(int delta) {

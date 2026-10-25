@@ -5,8 +5,10 @@ import '../data.dart';
 import '../store.dart';
 import '../theme.dart';
 import 'common.dart';
+import 'note_cloud.dart';
 
-/// 完整的备注选择器：常用 / 最近 / 全部 三档排序 + 搜索 + 仅本分类筛选。
+/// 完整的备注选择器：词云 / 最近 / 全部 + 搜索 + 仅本分类筛选。
+/// 「常用」页签用词云呈现，字号随使用次数放大、颜色取自所属分类。
 Future<String?> showNotePicker(
   BuildContext context, {
   required AppStore store,
@@ -98,6 +100,83 @@ class _NotePickerSheetState extends State<_NotePickerSheet> {
     _draft.text = text;
     _draft.selection = TextSelection.collapsed(offset: text.length);
     setState(() {});
+  }
+
+  Widget _cloudView(Palette p, List<NoteStat> list) {
+    final List<NoteCloudItem> items = list
+        .take(48)
+        .map((NoteStat n) =>
+            NoteCloudItem(n.text, n.count, n.cats.isEmpty ? widget.catId : n.cats.first))
+        .toList();
+    // 本分类备选太少时，补几条其他分类的高频备注，避免大片留白
+    final List<NoteStat> extras = <NoteStat>[];
+    if (_onlyCat && list.length < 10) {
+      final List<NoteStat> other = _all
+          .where((NoteStat n) => !n.cats.contains(widget.catId))
+          .toList()
+        ..sort((NoteStat a, NoteStat b) => b.count.compareTo(a.count));
+      extras.addAll(other.take(8));
+    }
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 2, 20, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          NoteCloud(
+            data: items,
+            palette: p,
+            selected: _draft.text,
+            maxFont: 18,
+            minFont: 12,
+            onTap: _pick,
+          ),
+          if (extras.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 18),
+            Row(
+              children: <Widget>[
+                Icon(Icons.swap_horiz_rounded, size: 13, color: p.ink3),
+                const SizedBox(width: 4),
+                Text('其他分类常用',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: p.ink3)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            NoteCloud(
+              data: extras
+                  .map((NoteStat n) =>
+                      NoteCloudItem(n.text, n.count, n.cats.isEmpty ? widget.catId : n.cats.first))
+                  .toList(),
+              palette: p,
+              selected: _draft.text,
+              maxFont: 14,
+              minFont: 11,
+              onTap: _pick,
+            ),
+          ],
+          const SizedBox(height: 16),
+          Row(
+            children: <Widget>[
+              Icon(Icons.auto_awesome_rounded, size: 13, color: p.accent),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  '字号越大用得越多，颜色对应常用分类',
+                  style: TextStyle(fontSize: 10.5, color: p.ink3),
+                ),
+              ),
+              if (list.length > 48)
+                GestureDetector(
+                  onTap: () => setState(() => _tab = 2),
+                  child: Text(
+                    '全部 ${list.length} 条 ›',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: p.accent),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -247,7 +326,9 @@ class _NotePickerSheetState extends State<_NotePickerSheet> {
                         style: TextStyle(fontSize: 12.5, color: p.ink3),
                       ),
                     )
-                  : ListView.builder(
+                  : _tab == 0
+                      ? _cloudView(p, list)
+                      : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
                       itemCount: list.length,
                       itemBuilder: (BuildContext ctx, int i) {

@@ -68,6 +68,7 @@ class _BootstrapState extends State<Bootstrap> with WidgetsBindingObserver {
     // 读取用户对语音模型的保留偏好
     asr.AsrEngine.keepInBackground = _store.keepVoiceModel;
     asr.AsrEngine.backgroundRetention = Duration(seconds: _store.voiceRetentionSeconds);
+    _store.restoreReminder();
     await Future<void>.delayed(const Duration(milliseconds: 620));
     if (mounted) setState(() => _ready = true);
   }

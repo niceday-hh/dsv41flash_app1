@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data.dart';
 import 'models.dart';
+import 'platform/reminder.dart';
 import 'persist/file_store.dart';
 
 // ---------------------------------------------------------------- isolate 编解码
@@ -49,6 +50,8 @@ class AppStore extends ChangeNotifier {
   bool hideAmounts = false;
   bool keepVoiceModel = true;
   int voiceRetentionSeconds = 15;
+  /// 记一笔面板里快捷备注的条数（4–24）
+  int noteLimit = 8;
   String userName = '鲸鱼同学';
 
   List<Bill> get bills => List<Bill>.unmodifiable(_bills);
@@ -118,6 +121,9 @@ class AppStore extends ChangeNotifier {
       voiceRetentionSeconds =
           ((map['voiceRetention'] as num?)?.toInt() ?? voiceRetentionSeconds).clamp(5, 30);
     }
+    if (allow('noteLimit')) {
+      noteLimit = ((map['noteLimit'] as num?)?.toInt() ?? noteLimit).clamp(4, 24);
+    }
     if (allow('budgets')) {
       final Map<String, dynamic> b =
           (map['budgets'] as Map<String, dynamic>?) ?? <String, dynamic>{};
@@ -151,6 +157,7 @@ class AppStore extends ChangeNotifier {
         'user': userName,
         'keepVoice': keepVoiceModel,
         'voiceRetention': voiceRetentionSeconds,
+        'noteLimit': noteLimit,
         'budgets': _budgets,
         'version': 2,
       };
@@ -225,6 +232,26 @@ class AppStore extends ChangeNotifier {
     _persist();
   }
 
+  void setNoteLimit(int v) {
+    _touch('noteLimit');
+    noteLimit = v.clamp(4, 24);
+    notifyListeners();
+    _persist();
+  }
+
+  /// 最近用过的分类（按账单时间倒序），用于「改分类」弹层的快捷入口
+  List<String> recentCatIds({required bool expense, int limit = 6}) {
+    final Set<String> seen = <String>{};
+    final List<String> out = <String>[];
+    for (final Bill b in _bills) {
+      if (b.expense != expense) continue;
+      if (!seen.add(b.catId)) continue;
+      out.add(b.catId);
+      if (out.length >= limit) break;
+    }
+    return out;
+  }
+
   /// 统一金额展示（支持隐藏）
   String money(num v, {bool signed = false, bool trimZero = false}) {
     if (hideAmounts) return '••••';
@@ -233,7 +260,8 @@ class AppStore extends ChangeNotifier {
   }
 
   /// 某分类下最近使用过的备注，用于快捷选择
-  List<String> notesForCategory(String catId, {bool expense = true, int limit = 8}) {
+  List<String> notesForCategory(String catId, {bool expense = true, int? limit}) {
+    final int max = (limit ?? noteLimit).clamp(1, 24);
     final Set<String> seen = <String>{};
     final List<String> out = <String>[];
     for (final Bill b in _bills) {
@@ -241,28 +269,43 @@ class AppStore extends ChangeNotifier {
       final String n = b.note.trim();
       if (n.isEmpty || !seen.add(n)) continue;
       out.add(n);
-      if (out.length >= limit) break;
+      if (out.length >= max) break;
     }
     return out;
   }
 
   /// 备注词云数据：按使用次数排序（同分类优先，其次全部分类）
-  List<MapEntry<String, int>> noteCloud(String catId, {bool expense = true, int limit = 14}) {
+  List<NoteCloudItem> noteCloud(String catId, {bool expense = true, int limit = 14}) {
     final Map<String, int> same = <String, int>{};
     final Map<String, int> other = <String, int>{};
+    // 每条备注最常出现的分类，用于词云上色
+    final Map<String, Map<String, int>> catHits = <String, Map<String, int>>{};
     for (final Bill b in _bills) {
       if (b.expense != expense) continue;
       final String n = b.note.trim();
       if (n.isEmpty || n.length > 12) continue;
       final Map<String, int> target = b.catId == catId ? same : other;
       target[n] = (target[n] ?? 0) + 1;
+      catHits.putIfAbsent(n, () => <String, int>{});
+      catHits[n]![b.catId] = (catHits[n]![b.catId] ?? 0) + 1;
     }
+    String topCat(String note) {
+      final Map<String, int> hits = catHits[note] ?? <String, int>{};
+      if (hits.isEmpty) return catId;
+      final List<MapEntry<String, int>> e = hits.entries.toList()
+        ..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
+      return e.first.key;
+    }
+
     final List<MapEntry<String, int>> list = same.entries.toList()
       ..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
     final List<MapEntry<String, int>> rest = other.entries.toList()
       ..sort((MapEntry<String, int> a, MapEntry<String, int> b) => b.value.compareTo(a.value));
     list.addAll(rest);
-    return list.take(limit).toList();
+    return list
+        .take(limit)
+        .map((MapEntry<String, int> e) => NoteCloudItem(e.key, e.value, topCat(e.key)))
+        .toList();
   }
 
   /// 备注统计：次数、最近使用时间、关联分类（用于备注选择器排序与筛选）
@@ -388,6 +431,10 @@ class AppStore extends ChangeNotifier {
     reminderMinute = minute.clamp(0, 59);
     notifyListeners();
     _persist();
+    if (reminder) {
+      // 时间改了，把系统闹钟重新登记到新时刻
+      ReminderService.schedule(reminderHour, reminderMinute);
+    }
   }
 
   void setReminder(bool v) {
@@ -395,6 +442,16 @@ class AppStore extends ChangeNotifier {
     reminder = v;
     notifyListeners();
     _persist();
+    if (v) {
+      ReminderService.schedule(reminderHour, reminderMinute);
+    } else {
+      ReminderService.cancel();
+    }
+  }
+
+  /// 启动时补登记每日提醒，保证升级或系统清理后闹钟仍在
+  void restoreReminder() {
+    if (reminder) ReminderService.restore();
   }
 
   void setKeepVoiceModel(bool v) {
@@ -585,4 +642,12 @@ class NoteStat {
   int count = 1;
   DateTime latest;
   final Set<String> cats = <String>{};
+}
+
+/// 词云条目：文本、使用次数、最常出现的分类（用于上色）
+class NoteCloudItem {
+  const NoteCloudItem(this.text, this.count, this.catId);
+  final String text;
+  final int count;
+  final String catId;
 }

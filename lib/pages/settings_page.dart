@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../platform/csv_file.dart';
+import '../platform/reminder.dart';
 import '../store.dart';
+import '../version.dart';
 import '../voice/asr_engine.dart' as asr;
 import '../theme.dart';
 import '../ui/common.dart';
@@ -110,17 +112,32 @@ class SettingsPage extends StatelessWidget {
                   color: const Color(0xFFFFB74D),
                   title: '记账提醒',
                   subtitle: store.reminder
-                      ? '每天 ${store.reminderHour.toString().padLeft(2, '0')}:${store.reminderMinute.toString().padLeft(2, '0')} 提醒 · 点击改时间'
+                      ? '每天 ${store.reminderHour.toString().padLeft(2, '0')}:${store.reminderMinute.toString().padLeft(2, '0')} 推送通知 · 点击管理'
                       : '已关闭',
                   trailing: _IosSwitch(
                     value: store.reminder,
-                    onChanged: (bool v) {
+                    onChanged: (bool v) async {
                       HapticFeedback.selectionClick();
                       store.setReminder(v);
-                      showToast(context, v ? '已开启记账提醒' : '已关闭记账提醒', icon: Icons.notifications_rounded);
+                      if (!v) {
+                        if (ctxMounted(context)) {
+                          showToast(context, '已关闭记账提醒', icon: Icons.notifications_off_rounded);
+                        }
+                        return;
+                      }
+                      final bool ok = await ReminderService.schedule(
+                          store.reminderHour, store.reminderMinute);
+                      if (!ctxMounted(context)) return;
+                      final String hh = store.reminderHour.toString().padLeft(2, '0');
+                      final String mm = store.reminderMinute.toString().padLeft(2, '0');
+                      showToast(
+                        context,
+                        ok ? '已开启，每天 $hh:$mm 提醒你记账' : '时间已保存，但通知权限未开启',
+                        icon: ok ? Icons.notifications_rounded : Icons.notifications_off_rounded,
+                      );
                     },
                   ),
-                  onTap: store.reminder ? () => _pickReminderTime(context, store) : null,
+                  onTap: store.reminder ? () => _openReminderSheet(context, store) : null,
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(
@@ -128,9 +145,8 @@ class SettingsPage extends StatelessWidget {
                   icon: Icons.payments_rounded,
                   color: const Color(0xFF4DB6AC),
                   title: '默认货币',
-                  subtitle: '人民币 CNY',
-                  trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
-                  onTap: () => showToast(context, '当前版本仅支持人民币', icon: Icons.info_rounded),
+                  subtitle: '人民币 CNY · 暂不支持切换',
+                  trailing: Text('仅 CNY', style: TextStyle(fontSize: 11.5, color: p.ink3)),
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(
@@ -190,6 +206,16 @@ class SettingsPage extends StatelessWidget {
                 Divider(height: 1, color: p.line),
                 _tile(
                   p,
+                  icon: Icons.short_text_rounded,
+                  color: const Color(0xFF4DB6AC),
+                  title: '常用备注条数',
+                  subtitle: '记一笔时展示前 ${store.noteLimit} 条常用备注',
+                  trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
+                  onTap: () => _pickNoteLimit(context, store),
+                ),
+                Divider(height: 1, color: p.line),
+                _tile(
+                  p,
                   icon: Icons.account_circle_rounded,
                   color: const Color(0xFF7E8CE0),
                   title: '昵称',
@@ -211,7 +237,9 @@ class SettingsPage extends StatelessWidget {
                   icon: Icons.download_rounded,
                   color: const Color(0xFF5C9DFF),
                   title: '导出账单',
-                  subtitle: '复制为 CSV 文本，共 ${store.totalCount} 笔',
+                  subtitle: CsvFileService.supported
+                      ? '保存为 CSV 文件，共 ${store.totalCount} 笔'
+                      : '复制为 CSV 文本，共 ${store.totalCount} 笔',
                   trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
                   onTap: () => _exportCsv(context, store),
                 ),
@@ -221,7 +249,9 @@ class SettingsPage extends StatelessWidget {
                   icon: Icons.upload_file_rounded,
                   color: const Color(0xFF14C08A),
                   title: '导入账单',
-                  subtitle: '粘贴 CSV 文本，自动识别分类',
+                  subtitle: CsvFileService.supported
+                      ? '选择 CSV 文件导入，自动识别分类'
+                      : '粘贴 CSV 文本导入，自动识别分类',
                   trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
                   onTap: () => _pickCsvFile(context, store),
                 ),
@@ -271,7 +301,7 @@ class SettingsPage extends StatelessWidget {
                   icon: Icons.info_outline_rounded,
                   color: const Color(0xFF90A4AE),
                   title: '版本',
-                  subtitle: '鲸记账 v1.0.0',
+                  subtitle: '$kAppName v$kAppVersion（build $kAppBuild）',
                   trailing: Text('已是最新', style: TextStyle(fontSize: 11.5, color: p.ink3)),
                 ),
                 Divider(height: 1, color: p.line),
@@ -672,6 +702,116 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
+  Future<void> _openReminderSheet(BuildContext context, AppStore store) async {
+    final Palette p = AppScope.paletteOf(context);
+    final String hh = store.reminderHour.toString().padLeft(2, '0');
+    final String mm = store.reminderMinute.toString().padLeft(2, '0');
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Center(
+              child: Container(
+                width: 40,
+                height: 5,
+                decoration:
+                    BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('记账提醒', style: T.h2(p).copyWith(fontSize: 17)),
+            const SizedBox(height: 4),
+            Text(
+              '每天到点用系统通知提醒你记一笔，关掉通知权限就收不到。',
+              style: TextStyle(fontSize: 11.5, color: p.ink3, height: 1.5),
+            ),
+            const SizedBox(height: 10),
+            _sheetRow(
+              p,
+              icon: Icons.schedule_rounded,
+              title: '提醒时间',
+              trailing: '每天 $hh:$mm',
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _pickReminderTime(context, store);
+              },
+            ),
+            _sheetRow(
+              p,
+              icon: Icons.notifications_active_rounded,
+              title: '发一条测试通知',
+              trailing: '确认通知是否正常',
+              onTap: () async {
+                final bool ok = await ReminderService.test();
+                if (!ctxMounted(ctx)) return;
+                Navigator.pop(ctx);
+                showToast(
+                  context,
+                  ok ? '已发送，去通知栏看看' : '通知权限未开启，请到系统设置里允许通知',
+                  icon: ok ? Icons.notifications_rounded : Icons.notifications_off_rounded,
+                );
+              },
+            ),
+            _sheetRow(
+              p,
+              icon: Icons.notifications_off_rounded,
+              title: '关闭提醒',
+              trailing: '',
+              danger: true,
+              onTap: () {
+                store.setReminder(false);
+                Navigator.pop(ctx);
+                showToast(context, '已关闭记账提醒', icon: Icons.notifications_off_rounded);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _sheetRow(
+    Palette p, {
+    required IconData icon,
+    required String title,
+    required String trailing,
+    required VoidCallback onTap,
+    bool danger = false,
+  }) {
+    final Color color = danger ? p.expense : p.ink2;
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          children: <Widget>[
+            Icon(icon, size: 17, color: color),
+            const SizedBox(width: 10),
+            Text(title,
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600, color: danger ? p.expense : p.ink)),
+            const Spacer(),
+            Text(trailing, style: TextStyle(fontSize: 11.5, color: p.ink3)),
+            if (!danger) ...<Widget>[
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right_rounded, size: 16, color: p.ink3),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _pickReminderTime(BuildContext context, AppStore store) async {
     final TimeOfDay? picked = await showTimePicker(
       context: context,
@@ -728,6 +868,66 @@ class SettingsPage extends StatelessWidget {
     HapticFeedback.selectionClick();
     store.setVoiceRetention(picked);
     asr.AsrEngine.backgroundRetention = Duration(seconds: picked);
+  }
+
+  Future<void> _pickNoteLimit(BuildContext context, AppStore store) async {
+    final Palette p = AppScope.paletteOf(context);
+    final int? picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('常用备注条数', style: T.h2(p).copyWith(fontSize: 16)),
+            const SizedBox(height: 4),
+            Text(
+              '记一笔面板里，点备注行弹出的词云会展示这么多条历史备注。',
+              style: TextStyle(fontSize: 11.5, color: p.ink3, height: 1.5),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <int>[4, 6, 8, 12, 16, 20, 24].map((int n) {
+                final bool on = store.noteLimit == n;
+                return GestureDetector(
+                  onTap: () => Navigator.pop(ctx, n),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                    decoration: BoxDecoration(
+                      color: on ? p.accent.withOpacity(0.14) : p.cardSoft,
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                        color: on ? p.accent.withOpacity(0.6) : Colors.transparent,
+                        width: 1.3,
+                      ),
+                    ),
+                    child: Text(
+                      '$n 条',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+                        color: on ? p.accent : p.ink,
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || !ctxMounted(context)) return;
+    HapticFeedback.selectionClick();
+    store.setNoteLimit(picked);
   }
 
   Future<void> _importCsv(BuildContext context, AppStore store) async {
