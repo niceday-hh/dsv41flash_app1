@@ -44,3 +44,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# 离线语音模型（227MB，超出 GitHub 单文件限制，用 tool/prepare_voice_model.py 获取）
+/assets/asr/
+.voice-model-cache/

@@ -41,4 +41,37 @@ void main() {
   test('无效语句', () {
     expect(parseVoice('你好').valid, isFalse);
   });
+
+  _robustness();
+}
+
+void _robustness() {
+  test('全角与千分位', () {
+    expect(parseVoice('午饭２８块').amount, 28);
+    expect(parseVoice('房租1,280元').amount, 1280);
+  });
+
+  test('屏蔽数量与时间点', () {
+    expect(parseVoice('买2杯咖啡30块').amount, 30);
+    expect(parseVoice('10点半吃饭30块').amount, 30);
+    expect(parseVoice('跑了30分钟，打车25块').amount, 25);
+  });
+
+  test('否定短语', () {
+    final i = parseVoice('不是买衣服，是打车28块');
+    expect(i.amount, 28);
+    expect(i.catId, 'traffic');
+  });
+
+  test('显式备注', () {
+    final i = parseVoice('午饭28块，备注牛肉面');
+    expect(i.amount, 28);
+    expect(i.note.contains('牛肉面'), isTrue);
+  });
+
+  test('金额缺失给出警告', () {
+    final i = parseVoice('今天中午吃饭');
+    expect(i.valid, isFalse);
+    expect(i.warnings.any((String w) => w.contains('金额')), isTrue);
+  });
 }

@@ -8,6 +8,7 @@ import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
 import '../ui/add_sheet.dart';
+import '../ui/amount_keypad.dart';
 import 'calendar_page.dart';
 import 'search_page.dart';
 import '../ui/common.dart';
@@ -622,35 +623,55 @@ class _HomePageState extends State<HomePage> {
           padding: const EdgeInsets.fromLTRB(16, 11, 16, 11),
           child: Row(
             children: <Widget>[
-              CatBubble(cat: c, size: 40, iconSize: 19),
+              // 点分类气泡 → 单独换分类
+              GestureDetector(
+                onTap: () => _editCategory(b),
+                behavior: HitTestBehavior.opaque,
+                child: CatBubble(cat: c, size: 40, iconSize: 19),
+              ),
               const SizedBox(width: 12),
+              // 点标题/副标题 → 只改备注
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      title,
-                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      b.note.isEmpty ? '${timeLabel(b.date)} · ${c.name}类' : '${timeLabel(b.date)} · ${c.name}',
-                      style: TextStyle(fontSize: 11, color: p.ink3, fontWeight: FontWeight.w500),
-                    ),
-                  ],
+                child: GestureDetector(
+                  onTap: () => _editNote(b),
+                  behavior: HitTestBehavior.opaque,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        title,
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        b.note.isEmpty
+                            ? '${timeLabel(b.date)} · ${c.name}类'
+                            : '${timeLabel(b.date)} · ${c.name}',
+                        style: TextStyle(fontSize: 11, color: p.ink3, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                '${b.expense ? '-' : '+'}${store.money(b.amount)}',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: b.expense ? p.ink : p.income,
-                  letterSpacing: -0.4,
-                  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+              // 点金额 → 弹出独立数字键盘
+              GestureDetector(
+                onTap: () => _editAmount(b),
+                behavior: HitTestBehavior.opaque,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                  child: Text(
+                    '${b.expense ? '-' : '+'}${store.money(b.amount)}',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: b.expense ? p.ink : p.income,
+                      letterSpacing: -0.4,
+                      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -658,6 +679,169 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+  }
+
+  // ---------------------------------------------------------------- 行内快捷编辑
+
+  Future<void> _editCategory(Bill b) async {
+    HapticFeedback.selectionClick();
+    final Palette p = AppScope.paletteOf(context);
+    final AppStore store = AppScope.storeOf(context);
+    final List<CategoryDef> cats = catsFor(b.expense);
+    final String? picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('更换分类', style: T.h2(p).copyWith(fontSize: 16)),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: cats.map((CategoryDef c) {
+                final bool on = c.id == b.catId;
+                return GestureDetector(
+                  onTap: () => Navigator.pop(ctx, c.id),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: on ? c.color.withOpacity(0.16) : p.cardSoft,
+                      borderRadius: BorderRadius.circular(13),
+                      border: Border.all(color: on ? c.color : Colors.transparent, width: 1.4),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: <Widget>[
+                        Icon(c.icon, size: 15, color: c.color),
+                        const SizedBox(width: 6),
+                        Text(c.name,
+                            style: TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w600, color: p.ink)),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null || picked == b.catId || !mounted) return;
+    store.updateBill(b.copyWith(catId: picked));
+    if (mounted) {
+      showToast(context, '已改为「${catById(picked).name}」', icon: Icons.category_rounded);
+    }
+  }
+
+  Future<void> _editNote(Bill b) async {
+    HapticFeedback.selectionClick();
+    final Palette p = AppScope.paletteOf(context);
+    final AppStore store = AppScope.storeOf(context);
+    final List<MapEntry<String, int>> cloud = store.noteCloud(b.catId, expense: b.expense, limit: 12);
+    final TextEditingController ctrl = TextEditingController(text: b.note);
+    final String? note = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+          decoration: BoxDecoration(
+            color: p.card,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text('修改备注', style: T.h2(p).copyWith(fontSize: 16)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
+                  color: p.cardSoft,
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  maxLength: 20,
+                  style: TextStyle(fontSize: 15, color: p.ink),
+                  cursorColor: p.accent,
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    counterText: '',
+                    hintText: '写点什么',
+                  ),
+                ),
+              ),
+              if (cloud.isNotEmpty) ...<Widget>[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 7,
+                  runSpacing: 7,
+                  children: cloud.map((MapEntry<String, int> e) {
+                    return GestureDetector(
+                      onTap: () {
+                        HapticFeedback.selectionClick();
+                        ctrl.text = e.key;
+                        ctrl.selection = TextSelection.collapsed(offset: e.key.length);
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: p.accent.withOpacity(0.07),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(e.key,
+                            style: TextStyle(fontSize: 12, color: p.ink2)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ],
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    backgroundColor: p.accent.withOpacity(0.10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  ),
+                  onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                  child: Text('保存备注',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700, color: p.accent)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (note == null || !mounted) return;
+    store.updateBill(b.copyWith(note: note));
+    if (mounted) showToast(context, '备注已更新');
+  }
+
+  Future<void> _editAmount(Bill b) async {
+    HapticFeedback.selectionClick();
+    final AppStore store = AppScope.storeOf(context);
+    final double? v = await showAmountKeypad(context, initial: b.amount, expense: b.expense);
+    if (v == null || v <= 0 || !mounted) return;
+    store.updateBill(b.copyWith(amount: v));
+    if (mounted) showToast(context, '金额已改为 ${store.money(v)}', icon: Icons.payments_rounded);
   }
 
   Future<void> _openEdit(Bill b) async {

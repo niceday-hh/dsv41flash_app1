@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'pages/budget_page.dart';
-import 'pages/calendar_page.dart';
-import 'pages/insight_page.dart';
 import 'ui/add_sheet.dart';
+import 'ui/entry_launcher.dart';
 import 'voice/asr_engine.dart' as asr;
 import 'voice/voice_parser.dart';
 import 'voice/voice_sheet.dart';
@@ -12,7 +11,6 @@ import 'pages/home_page.dart';
 import 'pages/settings_page.dart';
 import 'pages/stats_page.dart';
 import 'theme.dart';
-import 'ui/add_sheet.dart';
 import 'ui/common.dart';
 
 class AppShell extends StatefulWidget {
@@ -189,126 +187,10 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
     );
   }
 
-  Future<void> _quickMenu() async {
-    final Palette p = AppScope.paletteOf(context);
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext ctx) {
-        return Container(
-          padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
-          decoration: BoxDecoration(
-            color: p.card,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              Container(
-                width: 40,
-                height: 5,
-                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
-              ),
-              const SizedBox(height: 18),
-              Row(
-                children: <Widget>[
-                  _quickTile(p, '记一笔', Icons.add_rounded, p.accent, () {
-                    Navigator.pop(ctx);
-                    _add();
-                  }),
-                  const SizedBox(width: 10),
-                  _quickTile(p, '语音记账', Icons.mic_rounded, const Color(0xFFF4576E), () {
-                    Navigator.pop(ctx);
-                    _voice();
-                  }),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                children: <Widget>[
-                  _quickTile(p, '消费日历', Icons.calendar_month_rounded, const Color(0xFF4DB6AC), () {
-                    Navigator.pop(ctx);
-                    Navigator.of(context).push(_fadeRoute(const CalendarPage()));
-                  }),
-                  const SizedBox(width: 10),
-                  _quickTile(p, '消费洞察', Icons.auto_awesome_rounded, const Color(0xFF9B8CFF), () {
-                    Navigator.pop(ctx);
-                    final DateTime now = DateTime.now();
-                    Navigator.of(context).push(_fadeRoute(InsightPage(
-                      start: DateTime(now.year, now.month, 1),
-                      end: DateTime(now.year, now.month + 1, 0),
-                      periodLabel: '${now.year}年${now.month}月',
-                    )));
-                  }),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Text(
-                '长按 + 可随时呼出快捷入口',
-                style: TextStyle(fontSize: 10.5, color: p.ink3),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _quickTile(Palette p, String label, IconData icon, Color color, VoidCallback onTap) {
-    return Expanded(
-      child: Pressable(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.09),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            children: <Widget>[
-              Icon(icon, size: 22, color: color),
-              const SizedBox(height: 8),
-              Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: p.ink)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Route<bool> _fadeRoute(Widget page) => PageRouteBuilder<bool>(
-        pageBuilder: (BuildContext c, Animation<double> a, Animation<double> s) => page,
-        transitionsBuilder: (BuildContext c, Animation<double> a, Animation<double> s, Widget child) {
-          return FadeTransition(
-            opacity: a,
-            child: SlideTransition(
-              position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
-                  .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
-              child: child,
-            ),
-          );
-        },
-      );
-
   Widget _addButton(Palette p) {
-    return Center(
-      child: Pressable(
-        onTap: _add,
-        onLongPress: _quickMenu,
-        scale: 0.9,
-        child: Container(
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            gradient: p.gradient,
-            borderRadius: BorderRadius.circular(18),
-            boxShadow: p.accentGlow,
-          ),
-          child: const Icon(Icons.add_rounded, color: Colors.white, size: 27),
-        ),
-      ),
-    );
+    return EntryLauncher(onManual: _add, onVoice: _voice);
   }
+
 }
 
 /// 背景光晕

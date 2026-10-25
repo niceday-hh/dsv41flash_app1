@@ -35,6 +35,23 @@ class Bill {
     this.note = '',
   });
 
+  Bill copyWith({
+    String? catId,
+    double? amount,
+    bool? expense,
+    DateTime? date,
+    String? note,
+  }) {
+    return Bill(
+      id: id,
+      catId: catId ?? this.catId,
+      amount: amount ?? this.amount,
+      expense: expense ?? this.expense,
+      date: date ?? this.date,
+      note: note ?? this.note,
+    );
+  }
+
   Map<String, dynamic> toJson() => <String, dynamic>{
         'id': id,
         'c': catId,

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../platform/csv_file.dart';
 import '../store.dart';
+import '../voice/asr_engine.dart' as asr;
 import '../theme.dart';
 import '../ui/common.dart';
 
@@ -143,6 +144,36 @@ class SettingsPage extends StatelessWidget {
                     },
                   ),
                 ),
+                Divider(height: 1, color: p.line),
+                _tile(
+                  p,
+                  icon: Icons.memory_rounded,
+                  color: const Color(0xFF9B8CFF),
+                  title: '后台保留语音模型',
+                  subtitle: store.keepVoiceModel
+                      ? '切回应用可直接说话 · 切出即停止录音'
+                      : '切到后台立即释放内存',
+                  trailing: _IosSwitch(
+                    value: store.keepVoiceModel,
+                    onChanged: (bool v) {
+                      HapticFeedback.selectionClick();
+                      store.setKeepVoiceModel(v);
+                      asr.AsrEngine.keepInBackground = v;
+                    },
+                  ),
+                ),
+                if (store.keepVoiceModel) ...<Widget>[
+                  Divider(height: 1, color: p.line),
+                  _tile(
+                    p,
+                    icon: Icons.timer_outlined,
+                    color: const Color(0xFF7E8CE0),
+                    title: '模型保留时长',
+                    subtitle: '${store.voiceRetentionSeconds} 秒后释放模型',
+                    trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
+                    onTap: () => _pickRetention(context, store),
+                  ),
+                ],
                 Divider(height: 1, color: p.line),
                 _tile(
                   p,
@@ -518,6 +549,47 @@ class SettingsPage extends StatelessWidget {
     } catch (_) {
       if (ctxMounted(context)) showToast(context, '导入失败：格式不正确', icon: Icons.error_outline_rounded);
     }
+  }
+
+  Future<void> _pickRetention(BuildContext context, AppStore store) async {
+    final Palette p = AppScope.paletteOf(context);
+    final int? picked = await showModalBottomSheet<int>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
+        decoration: BoxDecoration(
+          color: p.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text('语音模型保留时长', style: T.h2(p).copyWith(fontSize: 16)),
+            const SizedBox(height: 4),
+            Text(
+              '切到后台后，模型在这段时间内保留，切回可直接说话。',
+              style: TextStyle(fontSize: 11.5, color: p.ink3, height: 1.5),
+            ),
+            const SizedBox(height: 12),
+            for (final int sec in <int>[5, 10, 15, 30])
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text('$sec 秒', style: TextStyle(fontSize: 14, color: p.ink)),
+                trailing: store.voiceRetentionSeconds == sec
+                    ? Icon(Icons.check_circle_rounded, size: 19, color: p.accent)
+                    : null,
+                onTap: () => Navigator.pop(ctx, sec),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked == null) return;
+    HapticFeedback.selectionClick();
+    store.setVoiceRetention(picked);
+    asr.AsrEngine.backgroundRetention = Duration(seconds: picked);
   }
 
   Future<void> _importCsv(BuildContext context, AppStore store) async {

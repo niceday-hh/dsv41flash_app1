@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -6,6 +8,7 @@ import 'app_shell.dart';
 import 'store.dart';
 import 'theme.dart';
 import 'ui/common.dart';
+import 'voice/asr_engine.dart' as asr;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,18 +27,47 @@ class Bootstrap extends StatefulWidget {
   State<Bootstrap> createState() => _BootstrapState();
 }
 
-class _BootstrapState extends State<Bootstrap> {
+class _BootstrapState extends State<Bootstrap> with WidgetsBindingObserver {
   final AppStore _store = AppStore();
   bool _ready = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _init();
+    // 首帧渲染完成后再预热语音模型，不阻塞启动画面
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (asr.AsrEngine.supported) unawaited(asr.AsrEngine.warmUp());
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!asr.AsrEngine.supported) return;
+    if (state == AppLifecycleState.resumed) {
+      asr.AsrEngine.onAppResumed();
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
+      asr.AsrEngine.onAppPaused();
+    }
+  }
+
+  @override
+  void didHaveMemoryPressure() {
+    asr.AsrEngine.onMemoryPressure();
   }
 
   Future<void> _init() async {
     await _store.load();
+    // 读取用户对语音模型的保留偏好
+    asr.AsrEngine.keepInBackground = _store.keepVoiceModel;
+    asr.AsrEngine.backgroundRetention = Duration(seconds: _store.voiceRetentionSeconds);
     await Future<void>.delayed(const Duration(milliseconds: 620));
     if (mounted) setState(() => _ready = true);
   }

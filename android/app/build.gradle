@@ -49,6 +49,11 @@ android {
         versionName = flutter.versionName
     }
 
+    androidResources {
+        // 模型已量化压缩，再压收益极低，跳过压缩可显著加快首次解压
+        noCompress += ["onnx"]
+    }
+
     packagingOptions {
         resources {
             excludes += ["**/sherpa-onnx-wasm-web.wasm", "**/*.wasm"]

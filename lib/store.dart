@@ -5,12 +5,39 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data.dart';
 import 'models.dart';
+import 'persist/file_store.dart';
+
+// ---------------------------------------------------------------- isolate 编解码
+// 顶层函数才能在 compute 中执行；账本超过 200 条时把 JSON 编解码丢到后台 isolate，
+// 避免大账本保存/启动时卡住 UI 线程。
+String _encodeLedger(Map<String, dynamic> data) => jsonEncode(data);
+
+Map<String, dynamic> _decodeLedger(String raw) => jsonDecode(raw) as Map<String, dynamic>;
+
+/// 超过该条数启用 isolate，小账本直接同步处理（省掉 isolate 启动开销）
+const int _isolateThreshold = 200;
 
 class AppStore extends ChangeNotifier {
-  static const String _storeKey = 'whale_ledger_v1';
+  static const String _legacyKey = 'whale_ledger_v1';
 
   final List<Bill> _bills = <Bill>[];
   Map<String, double> _budgets = <String, double>{};
+
+  // 保存队列：多次改动合并成一次落盘
+  bool _saveRequested = false;
+  Future<void>? _saving;
+
+  // 启动竞态保护：恢复磁盘数据期间用户已经做过的编辑不能被覆盖
+  bool _restoring = true;
+  int _editGeneration = 0;
+  final Set<String> _touchedPrefs = <String>{};
+
+  /// 等待所有未完成的落盘（退出前调用）
+  Future<void> flushPersistence() async {
+    while (_saving != null) {
+      await _saving;
+    }
+  }
 
   double monthlyBudget = 12000;
   bool darkMode = false;
@@ -18,6 +45,8 @@ class AppStore extends ChangeNotifier {
   bool reminder = true;
   bool loaded = false;
   bool hideAmounts = false;
+  bool keepVoiceModel = true;
+  int voiceRetentionSeconds = 15;
   String userName = '鲸鱼同学';
 
   List<Bill> get bills => List<Bill>.unmodifiable(_bills);
@@ -26,55 +55,137 @@ class AppStore extends ChangeNotifier {
   // ---------------------------------------------------------------- 持久化
 
   Future<void> load() async {
+    final int generation = _editGeneration;
     try {
-      final SharedPreferences sp = await SharedPreferences.getInstance();
-      final String? raw = sp.getString(_storeKey);
+      String? raw = await readLedger();
+      // 从旧版 SharedPreferences 平滑迁移到文件存储
+      if (raw == null || raw.isEmpty) raw = await _readLegacy();
       if (raw != null && raw.isNotEmpty) {
-        final Map<String, dynamic> map = jsonDecode(raw) as Map<String, dynamic>;
+        final Map<String, dynamic> map = raw.length >= 65536
+            ? await compute(_decodeLedger, raw, debugLabel: 'decode-ledger')
+            : _decodeLedger(raw);
         final List<dynamic> list = (map['bills'] as List<dynamic>?) ?? <dynamic>[];
-        _bills
-          ..clear()
-          ..addAll(list.map((dynamic e) => Bill.fromJson(e as Map<String, dynamic>)));
-        monthlyBudget = (map['monthlyBudget'] as num?)?.toDouble() ?? 12000;
-        darkMode = (map['dark'] as bool?) ?? false;
-        accentIndex = (map['accent'] as int?) ?? 0;
-        reminder = (map['reminder'] as bool?) ?? true;
-        hideAmounts = (map['hide'] as bool?) ?? false;
-        userName = (map['user'] as String?) ?? '鲸鱼同学';
-        final Map<String, dynamic> b = (map['budgets'] as Map<String, dynamic>?) ?? <String, dynamic>{};
-        _budgets = b.map((String k, dynamic v) => MapEntry<String, double>(k, (v as num).toDouble()));
+        final List<Bill> parsed = list
+            .map((dynamic e) => Bill.fromJson(e as Map<String, dynamic>))
+            .toList();
+
+        final bool userEditedWhileLoading = _editGeneration != generation;
+        if (!userEditedWhileLoading) {
+          _bills
+            ..clear()
+            ..addAll(parsed);
+        }
+        _applyPrefs(map, skipTouched: userEditedWhileLoading);
         if (_budgets.isEmpty) _budgets = defaultBudgets();
       } else {
         _bills.addAll(buildSeedBills());
         _budgets = defaultBudgets();
-        await _persist();
       }
     } catch (e) {
       if (_bills.isEmpty) _bills.addAll(buildSeedBills());
       if (_budgets.isEmpty) _budgets = defaultBudgets();
     }
+    _restoring = false;
+    _touchedPrefs.clear();
     _sort();
     loaded = true;
     notifyListeners();
+    // 首次启动或迁移后立即落盘，保证下次能从文件读回
+    _persist();
   }
 
-  Future<void> _persist() async {
+  /// 应用偏好字段；skipTouched 为 true 时跳过用户在恢复期间改过的项
+  void _applyPrefs(Map<String, dynamic> map, {required bool skipTouched}) {
+    bool allow(String key) => !skipTouched || !_touchedPrefs.contains(key);
+    if (allow('monthlyBudget')) {
+      monthlyBudget = (map['monthlyBudget'] as num?)?.toDouble() ?? monthlyBudget;
+    }
+    if (allow('dark')) darkMode = (map['dark'] as bool?) ?? darkMode;
+    if (allow('accent')) accentIndex = (map['accent'] as int?) ?? accentIndex;
+    if (allow('reminder')) reminder = (map['reminder'] as bool?) ?? reminder;
+    if (allow('hide')) hideAmounts = (map['hide'] as bool?) ?? hideAmounts;
+    if (allow('user')) userName = (map['user'] as String?) ?? userName;
+    if (allow('keepVoice')) {
+      keepVoiceModel = (map['keepVoice'] as bool?) ?? keepVoiceModel;
+    }
+    if (allow('voiceRetention')) {
+      voiceRetentionSeconds =
+          ((map['voiceRetention'] as num?)?.toInt() ?? voiceRetentionSeconds).clamp(5, 30);
+    }
+    if (allow('budgets')) {
+      final Map<String, dynamic> b =
+          (map['budgets'] as Map<String, dynamic>?) ?? <String, dynamic>{};
+      if (b.isNotEmpty) {
+        _budgets = b.map(
+          (String k, dynamic v) => MapEntry<String, double>(k, (v as num).toDouble()),
+        );
+      }
+    }
+  }
+
+  /// 旧版本使用 shared_preferences 的单个 key，这里读一次用于迁移
+  static Future<String?> _readLegacy() async {
     try {
       final SharedPreferences sp = await SharedPreferences.getInstance();
-      await sp.setString(
-        _storeKey,
-        jsonEncode(<String, dynamic>{
-          'bills': _bills.map((Bill b) => b.toJson()).toList(),
-          'monthlyBudget': monthlyBudget,
-          'dark': darkMode,
-          'accent': accentIndex,
-          'reminder': reminder,
-          'hide': hideAmounts,
-          'user': userName,
-          'budgets': _budgets,
-        }),
-      );
+      return sp.getString(_legacyKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Map<String, dynamic> _snapshot() => <String, dynamic>{
+        'bills': _bills.map((Bill b) => b.toJson()).toList(),
+        'monthlyBudget': monthlyBudget,
+        'dark': darkMode,
+        'accent': accentIndex,
+        'reminder': reminder,
+        'hide': hideAmounts,
+        'user': userName,
+        'keepVoice': keepVoiceModel,
+        'voiceRetention': voiceRetentionSeconds,
+        'budgets': _budgets,
+        'version': 2,
+      };
+
+  void _persist() {
+    _saveRequested = true;
+    _startSaving();
+  }
+
+  void _startSaving() {
+    if (_saving != null) return;
+    _saving = _drainSaves().whenComplete(() {
+      _saving = null;
+      if (_saveRequested) _startSaving();
+    });
+  }
+
+  Future<void> _drainSaves() async {
+    while (_saveRequested) {
+      _saveRequested = false;
+      final Map<String, dynamic> snap = _snapshot();
+      try {
+        final String payload = _bills.length >= _isolateThreshold
+            ? await compute(_encodeLedger, snap, debugLabel: 'encode-ledger')
+            : _encodeLedger(snap);
+        await writeLedger(payload);
+        if (_bills.isNotEmpty) _clearLegacy();
+      } catch (_) {
+        // 落盘失败不影响内存账本
+      }
+    }
+  }
+
+  static Future<void> _clearLegacy() async {
+    try {
+      final SharedPreferences sp = await SharedPreferences.getInstance();
+      await sp.remove(_legacyKey);
     } catch (_) {}
+  }
+
+  void _touch(String pref) {
+    if (_restoring) _touchedPrefs.add(pref);
+    _editGeneration++;
   }
 
   void _sort() => _bills.sort((Bill a, Bill b) => b.date.compareTo(a.date));
@@ -82,6 +193,7 @@ class AppStore extends ChangeNotifier {
   // ---------------------------------------------------------------- 增删改
 
   void addBill(Bill b) {
+    _touch('bills');
     _bills.add(b);
     _sort();
     notifyListeners();
@@ -91,6 +203,7 @@ class AppStore extends ChangeNotifier {
   void updateBill(Bill updated) {
     final int i = _bills.indexWhere((Bill b) => b.id == updated.id);
     if (i < 0) return;
+    _touch('bills');
     _bills[i] = updated;
     _sort();
     notifyListeners();
@@ -98,6 +211,7 @@ class AppStore extends ChangeNotifier {
   }
 
   void setHideAmounts(bool v) {
+    _touch('hide');
     hideAmounts = v;
     notifyListeners();
     _persist();
@@ -198,6 +312,7 @@ class AppStore extends ChangeNotifier {
         note: note.isEmpty ? catName : note,
       ));
     }
+    _touch('bills');
     if (replace) _bills.clear();
     _bills.addAll(imported);
     _sort();
@@ -209,6 +324,7 @@ class AppStore extends ChangeNotifier {
   Bill? removeBill(String id) {
     final int i = _bills.indexWhere((Bill b) => b.id == id);
     if (i < 0) return null;
+    _touch('bills');
     final Bill removed = _bills.removeAt(i);
     notifyListeners();
     _persist();
@@ -216,48 +332,70 @@ class AppStore extends ChangeNotifier {
   }
 
   void setMonthlyBudget(double v) {
+    _touch('monthlyBudget');
     monthlyBudget = v;
     notifyListeners();
     _persist();
   }
 
   void setCategoryBudget(String catId, double v) {
+    _touch('budgets');
     _budgets[catId] = v;
     notifyListeners();
     _persist();
   }
 
   void setDark(bool v) {
+    _touch('dark');
     darkMode = v;
     notifyListeners();
     _persist();
   }
 
   void setAccent(int i) {
+    _touch('accent');
     accentIndex = i;
     notifyListeners();
     _persist();
   }
 
   void setReminder(bool v) {
+    _touch('reminder');
     reminder = v;
     notifyListeners();
     _persist();
   }
 
+  void setKeepVoiceModel(bool v) {
+    _touch('keepVoice');
+    keepVoiceModel = v;
+    notifyListeners();
+    _persist();
+  }
+
+  void setVoiceRetention(int seconds) {
+    _touch('voiceRetention');
+    voiceRetentionSeconds = seconds.clamp(5, 30);
+    notifyListeners();
+    _persist();
+  }
+
   void setName(String v) {
+    _touch('user');
     userName = v;
     notifyListeners();
     _persist();
   }
 
   void clearAll() {
+    _touch('bills');
     _bills.clear();
     notifyListeners();
     _persist();
   }
 
   void restoreDemo() {
+    _touch('bills');
     _bills
       ..clear()
       ..addAll(buildSeedBills());
