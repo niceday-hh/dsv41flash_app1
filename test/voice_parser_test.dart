@@ -79,6 +79,17 @@ void _v151Rules() {
     expect(vague.warnings.any((String w) => w.contains('日期不明确')), isTrue);
   });
 
+  test('备注只留对象', () {
+    final a = parseVoice('买咖啡花了28块', now: now);
+    expect(a.note, '咖啡');
+    final b = parseVoice('打车花了 28', now: now);
+    expect(b.note.contains('打车'), isTrue);
+    final c = parseVoice('帮我记一笔，午饭 28 块', now: now);
+    expect(c.note.contains('午饭'), isTrue);
+    final d = parseVoice('买了件衣服 300', now: now);
+    expect(d.note.contains('衣服'), isTrue);
+  });
+
   test('显式分类与历史备注', () {
     expect(parseVoice('分类是交通 20 块', now: now).catId, 'traffic');
     final hinted = parseVoice('星巴克 32', now: now, history: const <NoteHint>[

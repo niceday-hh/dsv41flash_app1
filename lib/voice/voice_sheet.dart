@@ -335,6 +335,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
   Widget build(BuildContext context) {
     final Palette p = AppScope.paletteOf(context);
     return Container(
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.9),
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
       decoration: BoxDecoration(
         color: p.card,
@@ -403,7 +404,11 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
               ),
             ),
             const SizedBox(height: 14),
-            if (_stage == _Stage.review) _review(p) else _holdButton(p),
+            Flexible(
+              child: SingleChildScrollView(
+                child: _stage == _Stage.review ? _review(p) : _holdButton(p),
+              ),
+            ),
             if (_stage == _Stage.review) ...<Widget>[
               const SizedBox(height: 12),
               Row(
@@ -550,9 +555,20 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
   Widget _review(Palette p) {
     final VoiceIntent intent = _intent!;
     final CategoryDef cat = catById(intent.catId);
+    final String amountText =
+        '¥${intent.amount.toStringAsFixed(intent.amount == intent.amount.roundToDouble() ? 0 : 2)}';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
+        Row(
+          children: <Widget>[
+            Icon(Icons.subject_rounded, size: 13, color: p.ink3),
+            const SizedBox(width: 4),
+            Text('识别原文（改完会自动重新拆分）',
+                style: TextStyle(fontSize: 10.5, color: p.ink3)),
+          ],
+        ),
+        const SizedBox(height: 6),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(12, 2, 12, 2),
@@ -571,70 +587,83 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
               border: InputBorder.none,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(vertical: 10),
-              hintText: '识别结果，可直接修改后自动重新拆分',
+              hintText: '例如：买咖啡花了 28 块',
               hintStyle: TextStyle(fontSize: 12, color: p.ink3),
-              suffixIcon: Icon(Icons.edit_rounded, size: 14, color: p.ink3),
             ),
           ),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         Row(
           children: <Widget>[
-            _chip(p, cat.name, cat.color, Icons.category_rounded, onTap: _pickCategory),
-            const SizedBox(width: 8),
-            _chip(
-              p,
-              '¥${intent.amount.toStringAsFixed(intent.amount == intent.amount.roundToDouble() ? 0 : 2)}',
-              p.accent,
-              Icons.payments_rounded,
-              onTap: _editAmount,
+            Segmented(
+              labels: const <String>['支出', '收入'],
+              index: intent.expense ? 0 : 1,
+              compact: true,
+              segWidth: 56,
+              onChanged: (int i) => _toggleExpense(i == 0),
             ),
-            const SizedBox(width: 8),
-            _chip(
-              p,
-              '${intent.date.month}月${intent.date.day}日',
-              p.ink2,
-              Icons.event_rounded,
-              onTap: _pickDate,
+            const Spacer(),
+            Text(
+              intent.warnings.isEmpty ? '拆分完成' : '${intent.warnings.length} 条待确认',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: intent.warnings.isEmpty ? p.ink3 : p.expense,
+              ),
             ),
           ],
         ),
-        if (intent.note.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 8),
-          Row(
+        const SizedBox(height: 10),
+        Container(
+          decoration: BoxDecoration(
+            color: p.dark ? Colors.white.withOpacity(0.04) : p.cardSoft,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
             children: <Widget>[
-              Icon(Icons.sticky_note_2_outlined, size: 13, color: p.ink3),
-              const SizedBox(width: 5),
-              Expanded(
-                child: Text(
-                  intent.note,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 12, color: p.ink2),
-                ),
-              ),
-              Text(
-                intent.expense ? '支出' : '收入',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: intent.expense ? p.expense : p.income,
-                ),
-              ),
+              _settingRow(p,
+                  icon: Icons.category_rounded,
+                  color: cat.color,
+                  label: '分类',
+                  value: cat.name,
+                  onTap: _pickCategory),
+              _rowDivider(p),
+              _settingRow(p,
+                  icon: Icons.payments_rounded,
+                  color: p.accent,
+                  label: '金额',
+                  value: amountText,
+                  onTap: _editAmount),
+              _rowDivider(p),
+              _settingRow(p,
+                  icon: Icons.event_rounded,
+                  color: p.ink2,
+                  label: '日期',
+                  value: '${intent.date.month}月${intent.date.day}日',
+                  onTap: _pickDate),
+              _rowDivider(p),
+              _settingRow(p,
+                  icon: Icons.sticky_note_2_outlined,
+                  color: p.ink2,
+                  label: '备注',
+                  value: intent.note.isEmpty ? '未填写' : intent.note,
+                  onTap: _editNote),
             ],
           ),
-        ],
+        ),
         if (intent.warnings.isNotEmpty) ...<Widget>[
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           for (final String w in intent.warnings)
             Padding(
-              padding: const EdgeInsets.only(top: 2),
+              padding: const EdgeInsets.only(top: 3),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Icon(Icons.info_outline_rounded, size: 12, color: p.expense),
                   const SizedBox(width: 4),
                   Expanded(
-                    child: Text(w, style: TextStyle(fontSize: 11, color: p.expense)),
+                    child: Text(w,
+                        style: TextStyle(fontSize: 11, color: p.expense, height: 1.4)),
                   ),
                 ],
               ),
@@ -644,32 +673,85 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
     );
   }
 
-  Widget _chip(Palette p, String text, Color color, IconData icon, {VoidCallback? onTap}) {
+  Widget _rowDivider(Palette p) =>
+      Divider(height: 1, color: p.line.withOpacity(0.6), indent: 40, endIndent: 12);
+
+  Widget _settingRow(
+    Palette p, {
+    required IconData icon,
+    required Color color,
+    required String label,
+    required String value,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
-      onTap: onTap == null
-          ? null
-          : () {
-              HapticFeedback.selectionClick();
-              onTap();
-            },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.10),
-          borderRadius: BorderRadius.circular(10),
-        ),
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      behavior: HitTestBehavior.opaque,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         child: Row(
-          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(icon, size: 12, color: color),
-            const SizedBox(width: 4),
-            Text(
-              text,
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
+            Icon(icon, size: 15, color: color),
+            const SizedBox(width: 8),
+            Text(label, style: TextStyle(fontSize: 12.5, color: p.ink2)),
+            const Spacer(),
+            Flexible(
+              child: Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: p.ink),
+              ),
             ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right_rounded, size: 16, color: p.ink3),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _editNote() async {
+    final VoiceIntent? intent = _intent;
+    if (intent == null) return;
+    final TextEditingController c = TextEditingController(text: intent.note);
+    final String? v = await showDialog<String>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('修改备注'),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          maxLength: 20,
+          decoration: const InputDecoration(hintText: '写点备注'),
+        ),
+        actions: <Widget>[
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, c.text.trim()), child: const Text('确定')),
+        ],
+      ),
+    );
+    if (v == null || !mounted) return;
+    setState(() {
+      _edited.add('note');
+      _intent = intent.copyWith(note: v);
+    });
+  }
+
+  void _toggleExpense(bool expense) {
+    final VoiceIntent? intent = _intent;
+    if (intent == null || intent.expense == expense) return;
+    HapticFeedback.selectionClick();
+    final CategoryDef current = catById(intent.catId);
+    final String catId = current.expense == expense ? current.id : catsFor(expense).first.id;
+    setState(() {
+      _edited.add('type');
+      _edited.add('category');
+      _intent = intent.copyWith(expense: expense, catId: catId);
+    });
   }
 }

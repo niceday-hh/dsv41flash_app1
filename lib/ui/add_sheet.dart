@@ -175,6 +175,68 @@ class _BillSheetState extends State<_BillSheet> {
 
   // ------------------------------------------------------------ 保存
 
+  /// 分类格子：图标统一 36，选中时在图标外画一圈细环，不压到文字
+  Widget _catCell(
+    Palette p, {
+    required IconData icon,
+    required Color color,
+    required String label,
+    required bool on,
+    required VoidCallback onTap,
+    bool soft = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: <Widget>[
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.all(2),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: on ? color.withOpacity(0.55) : Colors.transparent,
+                width: 1.6,
+              ),
+            ),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: soft ? p.cardSoft : (on ? color : color.withOpacity(p.dark ? 0.20 : 0.14)),
+                borderRadius: BorderRadius.circular(11),
+                boxShadow: on
+                    ? <BoxShadow>[
+                        BoxShadow(
+                          color: color.withOpacity(0.30),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: Icon(icon, size: 18, color: soft ? p.ink2 : (on ? Colors.white : color)),
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 10,
+              height: 1.1,
+              fontWeight: on ? FontWeight.w700 : FontWeight.w500,
+              color: on ? color : p.ink2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showAllCategories() async {
     HapticFeedback.selectionClick();
     final Palette p = AppScope.paletteOf(context);
@@ -572,98 +634,43 @@ class _BillSheetState extends State<_BillSheet> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     SizedBox(
-                      height: 136,
+                      height: 142,
                       child: GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 5,
-                          mainAxisSpacing: 2,
-                          crossAxisSpacing: 6,
-                          childAspectRatio: 1.16,
+                          mainAxisSpacing: 8,
+                          crossAxisSpacing: 4,
+                          childAspectRatio: 1.12,
                         ),
                         // 前 9 个常用分类 + 一个「全部」入口
                         itemCount: cats.length > 9 ? 10 : cats.length,
                         itemBuilder: (BuildContext context, int i) {
                           if (i == 9 && cats.length > 9) {
-                            return GestureDetector(
-                              onTap: () => _showAllCategories(),
-                              behavior: HitTestBehavior.opaque,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: <Widget>[
-                                  Container(
-                                    width: 44,
-                                    height: 44,
-                                    decoration: BoxDecoration(
-                                      color: p.cardSoft,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(Icons.grid_view_rounded, size: 20, color: p.ink2),
-                                  ),
-                                  const SizedBox(height: 5),
-                                  Text('全部', style: TextStyle(fontSize: 10.5, color: p.ink2)),
-                                ],
-                              ),
+                            return _catCell(
+                              p,
+                              icon: Icons.grid_view_rounded,
+                              color: p.ink2,
+                              label: '全部',
+                              on: false,
+                              soft: true,
+                              onTap: _showAllCategories,
                             );
                           }
                           final CategoryDef c = cats[i];
-                          final bool on = c.id == _catId;
-                          return GestureDetector(
+                          return _catCell(
+                            p,
+                            icon: c.icon,
+                            color: c.color,
+                            label: c.name,
+                            on: c.id == _catId,
                             onTap: () {
                               HapticFeedback.selectionClick();
                               setState(() => _catId = c.id);
                             },
-                            behavior: HitTestBehavior.opaque,
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              decoration: BoxDecoration(
-                                color: on ? c.color.withOpacity(0.10) : Colors.transparent,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: on ? c.color.withOpacity(0.45) : Colors.transparent,
-                                  width: 1.4,
-                                ),
-                              ),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: <Widget>[
-                                  AnimatedScale(
-                                    scale: on ? 1.08 : 1,
-                                    duration: const Duration(milliseconds: 200),
-                                    child: Container(
-                                      width: 36,
-                                      height: 36,
-                                      decoration: BoxDecoration(
-                                        color: on ? c.color : c.color.withOpacity(p.dark ? 0.18 : 0.13),
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: on
-                                            ? <BoxShadow>[
-                                                BoxShadow(
-                                                  color: c.color.withOpacity(0.35),
-                                                  blurRadius: 12,
-                                                  offset: const Offset(0, 5),
-                                                ),
-                                              ]
-                                            : null,
-                                      ),
-                                      child: Icon(c.icon, size: 18, color: on ? Colors.white : c.color),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    c.name,
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-                                      color: on ? c.color : p.ink2,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
                           );
                         },
                       ),

@@ -236,6 +236,24 @@ class _StatsPageState extends State<StatsPage> {
         .toList();
   }
 
+  /// 当前周期里「今天」对应的节点下标，-1 表示今天不在本周期
+  int get _todayIndex {
+    final DateTime now = DateTime.now();
+    final DateTime today = DateTime(now.year, now.month, now.day);
+    final DateTime s = _start;
+    if (_period == 2) {
+      if (today.year != s.year) return -1;
+      final int i = today.month - s.month;
+      return (i >= 0 && i < 3) ? i : -1;
+    }
+    if (_period == 3) {
+      return today.year == s.year ? today.month - 1 : -1;
+    }
+    final int diff = today.difference(DateTime(s.year, s.month, s.day)).inDays;
+    final int n = _period == 0 ? 7 : DateTime(s.year, s.month + 1, 0).day;
+    return (diff >= 0 && diff < n) ? diff : -1;
+  }
+
   String _nodeTitle(int index) {
     final DateTime s = _start;
     if (_period == 2) return '${s.month + index}月';
@@ -415,6 +433,8 @@ class _StatsPageState extends State<StatsPage> {
                   height: 152,
                   color: _expense ? p.expense : p.income,
                   highlight: _point,
+                  todayIndex: _todayIndex,
+                  todayColor: p.accent,
                   onTap: (int i) => setState(() => _point = _point == i ? -1 : i),
                 ),
                 if (_point >= 0 && _point < trend.length)
@@ -489,10 +509,43 @@ class _StatsPageState extends State<StatsPage> {
                       ),
                     ),
                   ),
+                if (_point >= 0 && _point < trend.length && _nodeBills(store, _point).isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Column(
+                      children: <Widget>[
+                        ..._nodeBills(store, _point).take(4).map(
+                              (Bill b) => _nodeRow(p, store, b),
+                            ),
+                        if (_nodeBills(store, _point).length > 4)
+                          GestureDetector(
+                            onTap: () => showBillListSheet(
+                              context,
+                              title: _nodeTitle(_point),
+                              subtitle:
+                                  '${_expense ? '支出' : '收入'} ${store.money(trend[_point])} · ${_nodeBills(store, _point).length} 笔',
+                              bills: _nodeBills(store, _point),
+                              store: store,
+                            ),
+                            behavior: HitTestBehavior.opaque,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Text(
+                                '查看全部 ${_nodeBills(store, _point).length} 笔 ›',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: p.accent,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
           const SizedBox(height: 14),
           Pressable(
             onTap: () {
@@ -1119,6 +1172,43 @@ class _StatsPageState extends State<StatsPage> {
               ],
             ),
           );
+  }
+
+  Widget _nodeRow(Palette p, AppStore store, Bill b) {
+    final CategoryDef c = catById(b.catId);
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () async {
+        final bool? ok = await showBillSheet(context, bill: b);
+        if (ok == true && mounted) setState(() {});
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: <Widget>[
+            CatBubble(cat: c, size: 26, iconSize: 13),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                b.note.isEmpty ? c.name : b.note,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12.5, color: p.ink, fontWeight: FontWeight.w500),
+              ),
+            ),
+            Text(
+              '${b.expense ? '-' : '+'}${store.money(b.amount)}',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: b.expense ? p.ink : p.income,
+                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _sortChip(Palette p, String label, int value, int current, ValueChanged<int> onTap) {

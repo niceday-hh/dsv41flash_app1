@@ -504,6 +504,29 @@ _MoneyResult _findMoney(String text) {
   return _MoneyResult(hits.first.value, warnings);
 }
 
+/// 从整句里提炼备注：「买咖啡花了28块」→「咖啡」
+String _cleanNote(String raw, String fallback) {
+  String s = raw;
+  // 金额片段
+  s = s.replaceAll(RegExp('$_num\\s*(?:块钱|块|元|圆)'), ' ');
+  s = s.replaceAll(RegExp('(?:人民币|¥|￥)\\s*$_num'), ' ');
+  s = s.replaceAll(RegExp('(?:花了?|付了?|支付了?|一共|总共|合计|实付|金额|价格)\\s*$_num'), ' ');
+  // 时间副词与口头语
+  s = s.replaceAll(RegExp(r'刚才|刚刚|早上|中午|晚上|上午|下午|今天|昨天|前天|大概|差不多|左右'), ' ');
+  // 记账口令
+  s = s.replaceAll(RegExp(r'记一笔|帮我记|记一下|记个账|记一笔账'), ' ');
+  s = s.replaceAll(RegExp(r'分类(?:为|是|选)?\s*[一-龥]{1,4}'), ' ');
+  // 动词与收支词
+  s = s.replaceAll(
+      RegExp(r'买了|购买的|买了|购买|买的|买|吃了|吃的|喝了|喝的|收到|到账|支出|收入|花费|花了|支付了|支付|付款|付了|付给|消费|用了|一共|总共'), ' ');
+  // 残留数字与标点
+  s = s.replaceAll(RegExp(r'\d+(?:\.\d+)?'), ' ');
+  s = s.replaceAll(RegExp(r'[，,。.、:：;；!！?？]'), ' ');
+  s = s.replaceAll(RegExp(r'\s+'), ' ').trim();
+  if (s.isEmpty) s = fallback;
+  return s.length > 14 ? s.substring(0, 14) : s;
+}
+
 // ------------------------------------------------------------------ 主入口
 
 VoiceIntent parseVoice(String raw, {DateTime? now, List<NoteHint> history = const <NoteHint>[]}) {
@@ -586,15 +609,8 @@ VoiceIntent parseVoice(String raw, {DateTime? now, List<NoteHint> history = cons
     }
   }
 
-  // 备注
-  String note = (explicitNote ?? body)
-      .replaceAll(RegExp(r'(花了|花费|消费|支付|付了|付给|一共|总共|大概|差不多|用了|收到|收入|支出)'), ' ')
-      .replaceAll(RegExp(r'(块钱|块|元|圆|人民币|整|钱)'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-  note = note.replaceAll(RegExp(r'^[\d\s.，,]+|[\d\s.，,]+$'), '').trim();
-  if (note.isEmpty) note = catById(catId).name;
-  if (note.length > 14) note = note.substring(0, 14);
+  // 备注：去掉金额、时间副词、记账口令与动词，只留「买了什么」
+  final String note = _cleanNote(explicitNote ?? body, catById(catId).name);
 
   return VoiceIntent(
     amount: amount,

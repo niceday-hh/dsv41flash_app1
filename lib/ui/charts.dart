@@ -419,6 +419,8 @@ class TrendLine extends StatefulWidget {
     this.highlight = -1,
     this.onTap,
     required this.color,
+    this.todayIndex = -1,
+    this.todayColor,
   }) : super(key: key);
 
   final List<double> values;
@@ -427,6 +429,10 @@ class TrendLine extends StatefulWidget {
   final int highlight;
   final ValueChanged<int>? onTap;
   final Color color;
+
+  /// 当前周期里「今天」对应的节点下标，-1 表示不在本周期
+  final int todayIndex;
+  final Color? todayColor;
 
   @override
   State<TrendLine> createState() => _TrendLineState();
@@ -483,6 +489,8 @@ class _TrendLineState extends State<TrendLine> with SingleTickerProviderStateMix
                 progress: Curves.easeOutCubic.transform(_c.value),
                 highlight: widget.highlight,
                 color: widget.color,
+                todayIndex: widget.todayIndex,
+                todayColor: widget.todayColor ?? widget.color,
                 textColor: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
                 gridColor: widget.color.withOpacity(0.10),
               ),
@@ -502,6 +510,8 @@ class _TrendLinePainter extends CustomPainter {
     required this.progress,
     required this.highlight,
     required this.color,
+    required this.todayIndex,
+    required this.todayColor,
     required this.textColor,
     required this.gridColor,
   });
@@ -511,6 +521,8 @@ class _TrendLinePainter extends CustomPainter {
   final double progress;
   final int highlight;
   final Color color;
+  final int todayIndex;
+  final Color todayColor;
   final Color textColor;
   final Color gridColor;
 
@@ -566,6 +578,43 @@ class _TrendLinePainter extends CustomPainter {
           colors: <Color>[color.withOpacity(0.22), color.withOpacity(0.01)],
         ).createShader(Rect.fromLTWH(padL, padTop, w, h)),
     );
+
+    // 峰值参考线
+    if (maxV > 0) {
+      final int peakIndex = values.indexOf(maxV);
+      final double py = yOf(peakIndex);
+      _dash(canvas, Offset(padL, py), Offset(padL + w, py), color.withOpacity(0.30), vertical: false);
+      final TextPainter peakText = TextPainter(
+        text: TextSpan(
+          text: '峰值 ¥${_compact(maxV)}',
+          style: TextStyle(fontSize: 9, height: 1.1, color: color, fontWeight: FontWeight.w700),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      // 峰值标签固定在左上角，避免和「今天」标签重叠
+      peakText.paint(canvas, Offset(padL + 2, 2));
+    }
+
+    // 今日竖虚线
+    if (todayIndex >= 0 && todayIndex < n) {
+      final double tx = xOf(todayIndex);
+      _dash(canvas, Offset(tx, padTop), Offset(tx, padTop + h), todayColor.withOpacity(0.45),
+          vertical: true);
+      final TextPainter todayText = TextPainter(
+        text: TextSpan(
+          text: '今天',
+          style: TextStyle(fontSize: 9, height: 1.1, color: todayColor, fontWeight: FontWeight.w700),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final double dx = (tx - todayText.width / 2).clamp(0.0, size.width - todayText.width - 6);
+      final RRect chip = RRect.fromRectAndRadius(
+        Rect.fromLTWH(dx - 4, 1, todayText.width + 8, 13),
+        const Radius.circular(6),
+      );
+      canvas.drawRRect(chip, Paint()..color = todayColor.withOpacity(0.12));
+      todayText.paint(canvas, Offset(dx, 2.5));
+    }
 
     // 折线
     canvas.drawPath(
@@ -630,10 +679,32 @@ class _TrendLinePainter extends CustomPainter {
     }
   }
 
+  void _dash(Canvas canvas, Offset from, Offset to, Color color, {required bool vertical}) {
+    final Paint paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.2;
+    if (vertical) {
+      for (double y = from.dy; y < to.dy; y += 6) {
+        canvas.drawLine(Offset(from.dx, y), Offset(from.dx, (y + 3.2).clamp(from.dy, to.dy)), paint);
+      }
+    } else {
+      for (double x = from.dx; x < to.dx; x += 6) {
+        canvas.drawLine(Offset(x, from.dy), Offset((x + 3.2).clamp(from.dx, to.dx), to.dy), paint);
+      }
+    }
+  }
+
+  String _compact(double v) {
+    if (v >= 10000) return '${(v / 10000).toStringAsFixed(1)} 万';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}k';
+    return v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+  }
+
   @override
   bool shouldRepaint(covariant _TrendLinePainter old) =>
       old.progress != progress ||
       old.highlight != highlight ||
       old.values != values ||
-      old.color != color;
+      old.color != color ||
+      old.todayIndex != todayIndex;
 }
