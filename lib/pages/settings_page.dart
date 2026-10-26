@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 
 import '../platform/csv_file.dart';
 import '../platform/reminder.dart';
+import '../calendar/calendar_data.dart';
 import '../store.dart';
 import '../version.dart';
 import '../voice/asr_engine.dart' as asr;
 import '../theme.dart';
 import '../ui/common.dart';
+import 'calendar_settings_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({Key? key}) : super(key: key);
@@ -164,14 +166,30 @@ class SettingsPage extends StatelessWidget {
                   ),
                 ),
                 Divider(height: 1, color: p.line),
-                _tile(
-                  p,
-                  icon: Icons.event_note_rounded,
-                  color: const Color(0xFF26C6DA),
-                  title: '日期资料',
-                  subtitle: '节气与节日标注 · 已内置 2025–2027',
-                  trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
-                  onTap: () => _showDateInfo(context),
+                AnimatedBuilder(
+                  animation: CalendarData.instance,
+                  builder: (BuildContext c, Widget? _) {
+                    final List<int> years = CalendarData.instance.years;
+                    final DateTime? updated =
+                        CalendarData.instance.checkedAt[DateTime.now().year];
+                    final String range = years.isEmpty
+                        ? '暂未收录'
+                        : '${years.first}–${years.last}';
+                    return _tile(
+                      p,
+                      icon: Icons.event_note_rounded,
+                      color: const Color(0xFF26C6DA),
+                      title: '日期资料',
+                      subtitle: '节气与法定假期 · 覆盖 $range'
+                          '${updated == null ? ' · 可在线更新' : ' · 已联网更新'}',
+                      trailing: Icon(Icons.chevron_right_rounded, size: 18, color: p.ink3),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (BuildContext _) => const CalendarSettingsPage(),
+                        ),
+                      ),
+                    );
+                  },
                 ),
                 Divider(height: 1, color: p.line),
                 _tile(

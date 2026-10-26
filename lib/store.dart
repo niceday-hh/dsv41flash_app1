@@ -639,7 +639,9 @@ class AppStore extends ChangeNotifier {
 class NoteStat {
   NoteStat(this.text, this.latest);
   final String text;
-  int count = 1;
+
+  /// 由 noteStats 累加得到，初始为 0（避免首条记录被算成 2 次）
+  int count = 0;
   DateTime latest;
   final Set<String> cats = <String>{};
 }

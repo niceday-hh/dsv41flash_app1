@@ -378,6 +378,7 @@ class _StatsPageState extends State<StatsPage> {
               expense: _expense,
               onMonthTap: _openMonth,
               onDayTap: _openDay,
+              obscure: store.hideAmounts,
             ),
             const SizedBox(height: 10),
             Center(
@@ -435,6 +436,7 @@ class _StatsPageState extends State<StatsPage> {
                   highlight: _point,
                   todayIndex: _todayIndex,
                   todayColor: p.accent,
+                  obscure: store.hideAmounts,
                   onTap: (int i) => setState(() => _point = _point == i ? -1 : i),
                 ),
                 if (_point >= 0 && _point < trend.length)

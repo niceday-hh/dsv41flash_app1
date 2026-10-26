@@ -421,6 +421,7 @@ class TrendLine extends StatefulWidget {
     required this.color,
     this.todayIndex = -1,
     this.todayColor,
+    this.obscure = false,
   }) : super(key: key);
 
   final List<double> values;
@@ -433,6 +434,9 @@ class TrendLine extends StatefulWidget {
   /// 当前周期里「今天」对应的节点下标，-1 表示不在本周期
   final int todayIndex;
   final Color? todayColor;
+
+  /// 隐藏金额：峰值标签不打码为具体数字
+  final bool obscure;
 
   @override
   State<TrendLine> createState() => _TrendLineState();
@@ -491,6 +495,7 @@ class _TrendLineState extends State<TrendLine> with SingleTickerProviderStateMix
                 color: widget.color,
                 todayIndex: widget.todayIndex,
                 todayColor: widget.todayColor ?? widget.color,
+                obscure: widget.obscure,
                 textColor: Theme.of(context).textTheme.bodySmall?.color ?? Colors.grey,
                 gridColor: widget.color.withOpacity(0.10),
               ),
@@ -512,6 +517,7 @@ class _TrendLinePainter extends CustomPainter {
     required this.color,
     required this.todayIndex,
     required this.todayColor,
+    required this.obscure,
     required this.textColor,
     required this.gridColor,
   });
@@ -523,6 +529,7 @@ class _TrendLinePainter extends CustomPainter {
   final Color color;
   final int todayIndex;
   final Color todayColor;
+  final bool obscure;
   final Color textColor;
   final Color gridColor;
 
@@ -586,7 +593,7 @@ class _TrendLinePainter extends CustomPainter {
       _dash(canvas, Offset(padL, py), Offset(padL + w, py), color.withOpacity(0.30), vertical: false);
       final TextPainter peakText = TextPainter(
         text: TextSpan(
-          text: '峰值 ¥${_compact(maxV)}',
+          text: obscure ? '峰值 ••••' : '峰值 ¥${_compact(maxV)}',
           style: TextStyle(fontSize: 9, height: 1.1, color: color, fontWeight: FontWeight.w700),
         ),
         textDirection: TextDirection.ltr,

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 
 const String ledgerFileName = 'ledger.json';
+const String calendarFileName = 'calendar.json';
 
 Future<File> _ledgerFile() async {
   final Directory dir = await getApplicationSupportDirectory();
@@ -18,6 +19,34 @@ Future<String?> readLedger() async {
     return raw.isEmpty ? null : raw;
   } catch (_) {
     return null;
+  }
+}
+
+Future<File> _calendarFile() async {
+  final Directory dir = await getApplicationSupportDirectory();
+  if (!await dir.exists()) await dir.create(recursive: true);
+  return File('${dir.path}/$calendarFileName');
+}
+
+Future<String?> readCalendar() async {
+  try {
+    final File f = await _calendarFile();
+    if (!await f.exists()) return null;
+    final String raw = await f.readAsString();
+    return raw.isEmpty ? null : raw;
+  } catch (_) {
+    return null;
+  }
+}
+
+Future<void> writeCalendar(String data) async {
+  try {
+    final File f = await _calendarFile();
+    final File tmp = File('${f.path}.tmp');
+    await tmp.writeAsString(data, flush: true);
+    await tmp.rename(f.path);
+  } catch (_) {
+    // 缓存写失败不影响使用
   }
 }
 

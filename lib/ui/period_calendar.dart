@@ -22,6 +22,7 @@ class PeriodCalendar extends StatelessWidget {
     required this.expense,
     this.onMonthTap,
     this.onDayTap,
+    this.obscure = false,
   }) : super(key: key);
 
   final DateTime start;
@@ -35,6 +36,9 @@ class PeriodCalendar extends StatelessWidget {
 
   /// 周 / 月视图点某一天时触发（查看当天明细）
   final ValueChanged<DateTime>? onDayTap;
+
+  /// 隐藏金额：关闭色阶差异、金额文字打码
+  final bool obscure;
 
   @override
   Widget build(BuildContext context) {
@@ -55,7 +59,9 @@ class PeriodCalendar extends StatelessWidget {
     for (int i = 0; i < 7; i++) {
       final DateTime d = DateTime(start.year, start.month, start.day + i);
       final double v = totals[_dayKey(d)] ?? 0;
-      final double ratio = maxV <= 0 ? 0 : (v / maxV).clamp(0.0, 1.0);
+      final double ratio = obscure
+          ? (v > 0 ? 0.34 : 0)
+          : (maxV <= 0 ? 0 : (v / maxV).clamp(0.0, 1.0));
       final DateInfo info = dateInfoOf(d);
       cols.add(
         Expanded(
@@ -83,7 +89,11 @@ class PeriodCalendar extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text(
-                          v >= 1000 ? '${(v / 1000).toStringAsFixed(1)}k' : v.toStringAsFixed(0),
+                          obscure
+                              ? '••'
+                              : (v >= 1000
+                                  ? '${(v / 1000).toStringAsFixed(1)}k'
+                                  : v.toStringAsFixed(0)),
                           style: TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w700,
@@ -145,7 +155,9 @@ class PeriodCalendar extends StatelessWidget {
     for (int d = 1; d <= days; d++) {
       final double v = totals[_dayKey(DateTime(month.year, month.month, d))] ?? 0;
       monthTotal += v;
-      final double ratio = maxV <= 0 ? 0 : (v / maxV).clamp(0.0, 1.0);
+      final double ratio = obscure
+          ? (v > 0 ? 0.34 : 0)
+          : (maxV <= 0 ? 0 : (v / maxV).clamp(0.0, 1.0));
       final DateInfo info = dateInfoOf(DateTime(month.year, month.month, d));
       cells.add(
         GestureDetector(
@@ -198,7 +210,9 @@ class PeriodCalendar extends StatelessWidget {
               Text('${month.month}月', style: T.h2(p).copyWith(fontSize: 15)),
               const SizedBox(width: 8),
               Text(
-                expense ? '支出 ${'¥${fmtAmount(monthTotal)}'}' : '收入 ${'¥${fmtAmount(monthTotal)}'}',
+                obscure
+                    ? (expense ? '支出 ••••' : '收入 ••••')
+                    : (expense ? '支出 ¥${fmtAmount(monthTotal)}' : '收入 ¥${fmtAmount(monthTotal)}'),
                 style: TextStyle(fontSize: 11, color: p.ink3),
               ),
               const Spacer(),
@@ -304,7 +318,7 @@ class PeriodCalendar extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      total <= 0 ? '—' : '¥${fmtAmount(total)}',
+                      obscure ? '••' : (total <= 0 ? '—' : '¥${fmtAmount(total)}'),
                       style: TextStyle(fontSize: 9.5, color: p.ink3),
                     ),
                   ],
@@ -326,7 +340,9 @@ class PeriodCalendar extends StatelessWidget {
   }
 
   Widget _miniCell(Palette p, Color tint, double v, double maxV) {
-    final double ratio = maxV <= 0 ? 0 : (v / maxV).clamp(0.0, 1.0);
+    final double ratio = obscure
+        ? (v > 0 ? 0.34 : 0)
+        : (maxV <= 0 ? 0 : (v / maxV).clamp(0.0, 1.0));
     return Container(
       decoration: BoxDecoration(
         color: v <= 0 ? p.cardSoft : tint.withOpacity(0.08 + ratio * 0.6),
@@ -336,6 +352,16 @@ class PeriodCalendar extends StatelessWidget {
   }
 
   Widget _legend(Palette p) {
+    if (obscure) {
+      return Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: <Widget>[
+          Icon(Icons.visibility_off_rounded, size: 11, color: p.ink3),
+          const SizedBox(width: 4),
+          Text('金额已隐藏', style: TextStyle(fontSize: 9, color: p.ink3)),
+        ],
+      );
+    }
     final Color tint = expense ? p.expense : p.income;
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,

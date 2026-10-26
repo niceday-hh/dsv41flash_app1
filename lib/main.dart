@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'app_shell.dart';
+import 'calendar/calendar_data.dart';
 import 'store.dart';
 import 'ui/whale_mark.dart';
 import 'theme.dart';
@@ -51,6 +52,10 @@ class _BootstrapState extends State<Bootstrap> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // 回前台时顺便检查日历资料（24 小时节流）
+      CalendarData.instance.autoCheck();
+    }
     if (!asr.AsrEngine.supported) return;
     if (state == AppLifecycleState.resumed) {
       asr.AsrEngine.onAppResumed();
@@ -70,6 +75,7 @@ class _BootstrapState extends State<Bootstrap> with WidgetsBindingObserver {
     asr.AsrEngine.keepInBackground = _store.keepVoiceModel;
     asr.AsrEngine.backgroundRetention = Duration(seconds: _store.voiceRetentionSeconds);
     _store.restoreReminder();
+    CalendarData.instance.load().then((_) => CalendarData.instance.autoCheck());
     await Future<void>.delayed(const Duration(milliseconds: 620));
     if (mounted) setState(() => _ready = true);
   }

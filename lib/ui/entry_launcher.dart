@@ -123,17 +123,26 @@ class _EntryLauncherState extends State<EntryLauncher> with SingleTickerProvider
     final Offset point = box.globalToLocal(globalPosition);
     final Offset delta = point - _origin;
     EntryChoice? selected;
+    final EntryChoice? current = _selection.value;
 
-    // 中心留出取消区，避免轻微上滑就误选
-    if (delta.distance > 44 && delta.dy < -48) {
-      for (final EntryChoice c in EntryChoice.values) {
-        final Offset target = _targetCenter(c);
-        final double radius = 34 + (_selection.value == c ? 9 : 0);
-        if ((point - target).distance <= radius) {
-          selected = c;
-          break;
-        }
+    // 进入上方区域后按左右方向判定：向上划过目标高度仍然有效，
+    // 不会因为手指继续上移而丢掉选中项。
+    if (delta.dy < -55) {
+      if (delta.dx <= -18) {
+        selected = EntryChoice.manual;
+      } else if (delta.dx >= 18) {
+        selected = EntryChoice.voice;
+      } else if (current != null) {
+        // 靠近中线时保持原选择，避免手抖来回切换
+        selected = current;
       }
+    }
+    // 迟滞：已经选中时，只有明显反向或回落到起点附近才取消
+    if (current != null && selected != current) {
+      final bool backToOrigin = delta.dy > -34;
+      final bool opposite = (current == EntryChoice.manual && delta.dx > 30) ||
+          (current == EntryChoice.voice && delta.dx < -30);
+      if (!backToOrigin && !opposite) selected = current;
     }
     if (selected == _selection.value) return;
     _selection.value = selected;

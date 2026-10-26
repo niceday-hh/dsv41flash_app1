@@ -1,19 +1,33 @@
+import 'calendar_data.dart';
+
 /// 日期资料：节气与公历节日。
 ///
 /// 节气用寿星公式按年推算后写死成表（2025–2027），比运行时近似更可控；
 /// 公历节日为固定日期。农历节日与法定调休需要官方数据，此处不内置，
 /// 以免显示错误的「补班 / 放假」信息。
 class DateInfo {
-  const DateInfo({this.term, this.festival, required this.weekend});
+  const DateInfo({
+    this.term,
+    this.festival,
+    required this.weekend,
+    this.holiday = false,
+    this.makeup = false,
+  });
 
   final String? term;
   final String? festival;
   final bool weekend;
 
-  bool get known => term != null || festival != null;
+  /// 法定放假（含调休）
+  final bool holiday;
 
-  /// 优先级：节气 > 节日；日历角标只显示一个，避免拥挤
-  String? get label => term ?? festival;
+  /// 补班日
+  final bool makeup;
+
+  bool get known => term != null || festival != null || holiday || makeup;
+
+  /// 优先级：补班 > 节气 > 节日；日历角标只显示一个，避免拥挤
+  String? get label => makeup ? '班' : (term ?? festival);
 }
 
 // 每年 24 个节气，按月份排序（每月两个）
@@ -62,27 +76,39 @@ const Map<int, String> _festivals = <int, String>{
   1225: '圣诞节',
 };
 
-/// 取某天的日期资料
-DateInfo dateInfoOf(DateTime date) {
-  final int key = date.month * 100 + date.day;
-  String? term;
+/// 内置节气（按年写死）
+String? _builtinTerm(DateTime date) {
   final List<String>? names = _terms[date.year];
   final List<int>? days = _termDays[date.year];
-  if (names != null && days != null) {
-    final int idx = (date.month - 1) * 2;
-    if (idx + 1 < days.length) {
-      if (days[idx] == date.day) term = names[idx];
-      if (days[idx + 1] == date.day) term = names[idx + 1];
-    }
-  }
-  return DateInfo(
-    term: term,
-    festival: _festivals[key],
-    weekend: date.weekday == DateTime.saturday || date.weekday == DateTime.sunday,
-  );
+  if (names == null || days == null) return null;
+  final int idx = (date.month - 1) * 2;
+  if (idx + 1 >= days.length) return null;
+  if (days[idx] == date.day) return names[idx];
+  if (days[idx + 1] == date.day) return names[idx + 1];
+  return null;
 }
 
-/// 该年是否有内置节气资料
-bool hasTermData(int year) => _terms.containsKey(year);
+/// 取某天的日期资料：在线假期/节气优先，其次内置
+DateInfo dateInfoOf(DateTime date) {
+  final int key = date.month * 100 + date.day;
+  final HolidayDay? holiday = CalendarData.instance.holidayOf(date);
+  final String? term = CalendarData.instance.termOf(date) ?? _builtinTerm(date);
+  final bool weekend =
+      date.weekday == DateTime.saturday || date.weekday == DateTime.sunday;
+  if (holiday != null) {
+    return DateInfo(
+      term: term,
+      festival: holiday.off ? holiday.name : null,
+      weekend: weekend || holiday.off,
+      holiday: holiday.off,
+      makeup: !holiday.off,
+    );
+  }
+  return DateInfo(term: term, festival: _festivals[key], weekend: weekend);
+}
+
+/// 该年是否有节气资料（内置或在线）
+bool hasTermData(int year) =>
+    _terms.containsKey(year) || CalendarData.instance.terms.containsKey(year);
 
 const List<int> supportedTermYears = <int>[2025, 2026, 2027];

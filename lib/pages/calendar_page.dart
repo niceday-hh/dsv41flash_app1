@@ -284,7 +284,9 @@ class _CalendarPageState extends State<CalendarPage> {
         if (day < 1 || day > days) return const SizedBox.shrink();
         final double amount = totals[day] ?? 0;
         final bool selected = day == _selected;
-        final double intensity = (maxDay <= 0 || amount <= 0) ? 0 : (amount / maxDay).clamp(0.12, 1.0);
+        final double intensity = store.hideAmounts
+            ? (amount > 0 ? 0.34 : 0)
+            : ((maxDay <= 0 || amount <= 0) ? 0 : (amount / maxDay).clamp(0.12, 1.0));
         final DateTime date = DateTime(_month.year, _month.month, day);
         final bool isToday = _isToday(date);
         return GestureDetector(
