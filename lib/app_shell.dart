@@ -84,14 +84,21 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
                   begin: const Offset(0, 0.014),
                   end: Offset.zero,
                 ).animate(CurvedAnimation(parent: _fade, curve: Curves.easeOutCubic)),
-                child: IndexedStack(
-                  index: _index,
-                  children: const <Widget>[
-                    HomePage(),
-                    StatsPage(),
-                    BudgetPage(),
-                    SettingsPage(),
-                  ],
+                // 平板 / 折叠屏上限制内容宽度，避免整页被拉成一条长线
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 560),
+                    child: IndexedStack(
+                      index: _index,
+                      children: const <Widget>[
+                        HomePage(),
+                        StatsPage(),
+                        BudgetPage(),
+                        SettingsPage(),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -115,13 +122,21 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
               ),
             ),
             Positioned(
-              left: 16,
-              right: 16,
+              left: 0,
+              right: 0,
               bottom: 0,
-              child: SafeArea(
-                top: false,
-                minimum: const EdgeInsets.only(bottom: 10),
-                child: _navBar(p),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 592),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SafeArea(
+                      top: false,
+                      minimum: const EdgeInsets.only(bottom: 10),
+                      child: _navBar(p),
+                    ),
+                  ),
+                ),
               ),
             ),
           ],

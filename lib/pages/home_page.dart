@@ -139,16 +139,22 @@ class _HomePageState extends State<HomePage> {
               desc: '点击下方 + 记录第一笔消费吧',
             )
           else
-            ...List<Widget>.generate(groups.length, (int i) {
-              return _Reveal(
-                key: ValueKey<String>('$_revealKey-${groups[i].day.toIso8601String()}'),
-                delay: (i * 45).clamp(0, 260),
-                child: Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: _dayCard(p, store, groups[i]),
+            _Reveal(
+              key: ValueKey<String>('$_revealKey-month'),
+              delay: 40,
+              child: SoftCard(
+                padding: EdgeInsets.zero,
+                child: Column(
+                  children: <Widget>[
+                    for (int i = 0; i < groups.length; i++) ...<Widget>[
+                      _daySection(p, store, groups[i], isFirst: i == 0),
+                      if (i != groups.length - 1)
+                        Divider(height: 1, thickness: 1, color: p.line, indent: 16, endIndent: 16),
+                    ],
+                  ],
                 ),
-              );
-            }),
+              ),
+            ),
         ],
       ),
     );
@@ -525,7 +531,7 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: ids.map((String id) {
               final CategoryDef c = catById(id);
-              final Color tone = soften(c.color, light: p.dark ? 0.06 : 0.03);
+              final Color tone = c.color;
               return Expanded(
                 child: Pressable(
                   onTap: () async {
@@ -559,54 +565,125 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _dayCard(Palette p, AppStore store, DayGroup g) {
-    return SoftCard(
-      padding: EdgeInsets.zero,
+  Widget _daySection(Palette p, AppStore store, DayGroup g, {bool isFirst = false}) {
+    final bool today = _isToday(g.day);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Padding(
+          padding: EdgeInsets.fromLTRB(14, isFirst ? 14 : 12, 16, 6),
+          child: Row(
+            children: <Widget>[
+              _dayPill(p, g.day, today),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Text(
+                        dayLabel(g.day),
+                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: p.ink),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        '${g.bills.length} 笔',
+                        style: TextStyle(fontSize: 10.5, color: p.ink3, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    '${g.day.month} 月 ${g.day.day} 日',
+                    style: TextStyle(fontSize: 10.5, color: p.ink3, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              if (g.expense > 0)
+                Text(
+                  '支 ${store.money(g.expense)}',
+                  style: TextStyle(fontSize: 11.5, color: p.ink2, fontWeight: FontWeight.w700),
+                ),
+              if (g.expense > 0 && g.income > 0) const SizedBox(width: 8),
+              if (g.income > 0)
+                Text(
+                  '收 ${store.money(g.income)}',
+                  style: TextStyle(fontSize: 11.5, color: p.income, fontWeight: FontWeight.w700),
+                ),
+            ],
+          ),
+        ),
+        ...List<Widget>.generate(g.bills.length, (int i) {
+          return Column(
+            children: <Widget>[
+              _billTile(p, store, g.bills[i], i),
+              if (i != g.bills.length - 1)
+                Padding(
+                  padding: const EdgeInsets.only(left: 66),
+                  child: Divider(height: 1, color: p.line, thickness: 1),
+                ),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  /// 日期胶囊：作为连续时间轴上的节点，今天用品牌色实心
+  Widget _dayPill(Palette p, DateTime day, bool today) {
+    return Container(
+      width: 40,
+      height: 42,
+      decoration: BoxDecoration(
+        color: today ? p.accent : (p.dark ? Colors.white.withOpacity(0.06) : p.cardSoft),
+        borderRadius: BorderRadius.circular(R.m),
+        boxShadow: today ? p.accentGlow : null,
+      ),
       child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 13, 16, 9),
-            child: Row(
-              children: <Widget>[
-                Text(
-                  dayLabel(g.day),
-                  style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: p.ink),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '${g.day.month}/${g.day.day} ${weekdayCn(g.day)}',
-                  style: TextStyle(fontSize: 11, color: p.ink3, fontWeight: FontWeight.w500),
-                ),
-                const Spacer(),
-                if (g.expense > 0)
-                  Text(
-                    '支 ${AppScope.storeOf(context).money(g.expense)}',
-                    style: TextStyle(fontSize: 11, color: p.ink2, fontWeight: FontWeight.w600),
-                  ),
-                if (g.expense > 0 && g.income > 0) const SizedBox(width: 8),
-                if (g.income > 0)
-                  Text(
-                    '收 ${AppScope.storeOf(context).money(g.income)}',
-                    style: TextStyle(fontSize: 11, color: p.income, fontWeight: FontWeight.w600),
-                  ),
-              ],
+          Text(
+            '${day.day}',
+            style: TextStyle(
+              fontSize: 16,
+              height: 1.05,
+              fontWeight: FontWeight.w800,
+              color: today ? Colors.white : p.ink,
+              fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
             ),
           ),
-          Divider(height: 1, color: p.line, thickness: 1),
-          ...List<Widget>.generate(g.bills.length, (int i) {
-            final Bill b = g.bills[i];
-            return Column(
-              children: <Widget>[
-                _billTile(p, store, b, i),
-                if (i != g.bills.length - 1)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 66),
-                    child: Divider(height: 1, color: p.line, thickness: 1),
-                  ),
-              ],
-            );
-          }),
+          const SizedBox(height: 1),
+          Text(
+            weekdayCn(day),
+            style: TextStyle(
+              fontSize: 8.5,
+              height: 1.1,
+              fontWeight: FontWeight.w600,
+              color: today ? Colors.white.withOpacity(0.85) : p.ink3,
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  bool _isToday(DateTime d) {
+    final DateTime now = DateTime.now();
+    return d.year == now.year && d.month == now.month && d.day == now.day;
+  }
+
+  /// 分类小标签：只在有备注时出现，避免与标题重复
+  Widget _catChip(Palette p, CategoryDef c) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.color.withOpacity(p.dark ? 0.18 : 0.11),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        c.name,
+        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: c.color, height: 1.2),
       ),
     );
   }
@@ -621,7 +698,7 @@ class _HomePageState extends State<HomePage> {
         margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: p.expense.withOpacity(0.12),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(R.m),
         ),
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
@@ -662,17 +739,25 @@ class _HomePageState extends State<HomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: <Widget>[
-                      Text(
-                        title,
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: <Widget>[
+                          Flexible(
+                            child: Text(
+                              title,
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (b.note.isNotEmpty) ...<Widget>[
+                            const SizedBox(width: 6),
+                            _catChip(p, c),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        b.note.isEmpty
-                            ? '${timeLabel(b.date)} · ${c.name}类'
-                            : '${timeLabel(b.date)} · ${c.name}',
+                        timeLabel(b.date),
                         style: TextStyle(fontSize: 11, color: p.ink3, fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -686,14 +771,18 @@ class _HomePageState extends State<HomePage> {
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
-                  child: Text(
-                    '${b.expense ? '-' : '+'}${store.money(b.amount)}',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w700,
-                      color: b.expense ? p.ink : p.income,
-                      letterSpacing: -0.4,
-                      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minWidth: 84),
+                    child: Text(
+                      '${b.expense ? '-' : '+'}${store.money(b.amount)}',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: b.expense ? p.ink : p.income,
+                        letterSpacing: -0.4,
+                        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                      ),
                     ),
                   ),
                 ),

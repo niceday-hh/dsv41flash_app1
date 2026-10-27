@@ -235,7 +235,7 @@ class CatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Palette p = AppScope.paletteOf(context);
-    final Color tone = soften(cat.color, light: p.dark ? 0.02 : 0.03);
+    final Color tone = cat.color;
     return Container(
       width: size,
       height: size,

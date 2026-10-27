@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../voice/asr_engine.dart' as asr;
 import '../voice/voice_parser.dart';
 import '../voice/voice_sheet.dart';
+import 'whale_splash.dart';
 import 'common.dart';
 import 'note_picker.dart';
 
@@ -22,6 +23,12 @@ Future<bool?> showBillSheet(BuildContext context,
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     barrierColor: Colors.black.withOpacity(0.38),
+    // 轻微回弹的上滑，替代 bottom sheet 上不可用的 Hero 飞入
+    sheetAnimationStyle: AnimationStyle(
+      duration: Duration(milliseconds: 340),
+      curve: Curves.easeOutBack,
+      reverseCurve: Curves.easeInCubic,
+    ),
     builder: (BuildContext ctx) => _BillSheet(
       store: store,
       bill: bill,
@@ -184,8 +191,9 @@ class _BillSheetState extends State<_BillSheet> {
     required bool on,
     required VoidCallback onTap,
     bool soft = false,
+    bool outlined = false,
   }) {
-    final Color tone = soften(color, light: p.dark ? 0.06 : 0.03);
+    final Color tone = color;
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -198,7 +206,9 @@ class _BillSheetState extends State<_BillSheet> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15),
               border: Border.all(
-                color: on ? tone.withOpacity(0.55) : Colors.transparent,
+                color: on
+                    ? tone.withOpacity(0.55)
+                    : (outlined ? tone.withOpacity(0.32) : Colors.transparent),
                 width: 1.6,
               ),
             ),
@@ -366,7 +376,11 @@ class _BillSheetState extends State<_BillSheet> {
         note: note,
       ));
     }
-    if (mounted) Navigator.of(context).pop(true);
+    if (mounted) {
+      HapticFeedback.heavyImpact();
+      WhaleSplash.show(context);
+      Navigator.of(context).pop(true);
+    }
   }
 
   Future<void> _delete() async {
@@ -485,17 +499,18 @@ class _BillSheetState extends State<_BillSheet> {
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: <Widget>[
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 6),
-                          child: Text(
-                            '¥',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w600,
-                              color: _expense ? p.expense : p.income,
+                        if (_expr.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 6),
+                            child: Text(
+                              '¥',
+                              style: TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                                color: _expense ? p.expense : p.income,
+                              ),
                             ),
                           ),
-                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: AnimatedSwitcher(
@@ -508,12 +523,12 @@ class _BillSheetState extends State<_BillSheet> {
                               ],
                             ),
                             child: Text(
-                              _expr.isEmpty ? '0.00' : _expr,
+                              _expr.isEmpty ? '输入金额' : _expr,
                               key: ValueKey<String>(_expr),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: _expr.length > 9 ? 32 : 40,
+                                fontSize: _expr.isEmpty ? 24 : (_expr.length > 9 ? 32 : 40),
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -1.6,
                                 height: 1.1,
@@ -655,8 +670,9 @@ class _BillSheetState extends State<_BillSheet> {
                               p,
                               icon: Icons.grid_view_rounded,
                               color: p.accent,
-                              label: '全部',
+                              label: '更多',
                               on: false,
+                              outlined: true,
                               onTap: _showAllCategories,
                             );
                           }
@@ -681,7 +697,7 @@ class _BillSheetState extends State<_BillSheet> {
             ),
             // 数字键盘（支持 + − 计算）
             Container(
-              padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               decoration: BoxDecoration(
                 color: p.dark ? const Color(0xFF12141E) : const Color(0xFFF7F7FB),
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -694,7 +710,7 @@ class _BillSheetState extends State<_BillSheet> {
                     _keyRow(p, <String>['4', '5', '6', '+']),
                     _keyRow(p, <String>['7', '8', '9', '-']),
                     _keyRow(p, <String>['.', '0', 'C', '=']),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Pressable(
                       onTap: _save,
                       child: Container(
@@ -712,7 +728,9 @@ class _BillSheetState extends State<_BillSheet> {
                                 child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                               )
                             : Text(
-                                '${_editing ? '保存修改' : '保存'} · ¥${fmtMoney(_value)}',
+                                _value <= 0
+                                    ? (_editing ? '保存修改' : '保存')
+                                    : '${_editing ? '保存修改' : '保存'} · ¥${fmtMoney(_value)}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 15,
@@ -744,22 +762,17 @@ class _BillSheetState extends State<_BillSheet> {
               padding: const EdgeInsets.symmetric(horizontal: 3),
               child: Pressable(
                 onTap: () => _press(k),
-                scale: 0.92,
+                scale: 0.97,
                 child: Container(
                   height: 46,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: accent ? p.accent.withOpacity(0.10) : (fn ? Colors.transparent : p.card),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: fn
-                        ? null
-                        : <BoxShadow>[
-                            BoxShadow(
-                              color: Colors.black.withOpacity(p.dark ? 0.18 : 0.03),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
+                    color: accent
+                        ? p.accent.withOpacity(0.10)
+                        : (fn
+                            ? Colors.transparent
+                            : (p.dark ? Colors.white.withOpacity(0.055) : const Color(0xFFEFF0F5))),
+                    borderRadius: BorderRadius.circular(R.m),
                   ),
                   child: k == 'del'
                       ? Icon(Icons.backspace_outlined, size: 19, color: p.ink2)

@@ -417,10 +417,7 @@ class SettingsPage extends StatelessWidget {
                       border: Border.all(color: Colors.white.withOpacity(0.35)),
                     ),
                     alignment: Alignment.center,
-                    child: Text(
-                      store.userName.characters.first,
-                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w700),
-                    ),
+                    child: const WhaleMark(size: 36, color: Colors.white),
                   ),
                   const SizedBox(width: 14),
                   Expanded(

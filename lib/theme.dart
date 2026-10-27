@@ -35,16 +35,7 @@ class R {
   static const double xl = 28; // 主卡片
 }
 
-/// 分类色的统一“降噪”处理：压低饱和度、轻微提亮，
-/// 让 40+ 个分类放在一起时不至于糖果色过载。
-Color soften(Color c, {double sat = 0.72, double light = 0.04}) {
-  final HSLColor hsl = HSLColor.fromColor(c);
-  return hsl
-      .withSaturation((hsl.saturation * sat).clamp(0.0, 1.0))
-      .withLightness((hsl.lightness + light).clamp(0.0, 1.0))
-      .toColor();
-}
-
+/// 分类色保持原本的高饱和糖果色，图表与分类气泡直接使用 `CategoryDef.color`。
 class Palette {
   final bool dark;
   final Color bg;
@@ -153,12 +144,35 @@ class Palette {
 
 /// 全局文字样式助手
 class T {
-  static TextStyle h1(Palette p) =>
-      TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: p.ink, letterSpacing: -0.8, height: 1.1);
-  static TextStyle h2(Palette p) =>
-      TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: p.ink, letterSpacing: -0.4);
-  static TextStyle title(Palette p) => TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink);
-  static TextStyle body(Palette p) => TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: p.ink);
+  /// 标题使用内置霞鹜文楷子集，正文仍走系统黑体，兼顾“账本”气质与可读性
+  static const String display = 'WenKai';
+
+  static TextStyle h1(Palette p) => TextStyle(
+        fontFamily: display,
+        fontSize: 30,
+        fontWeight: FontWeight.w700,
+        color: p.ink,
+        letterSpacing: -0.4,
+        height: 1.18,
+      );
+  static TextStyle h2(Palette p) => TextStyle(
+        fontFamily: display,
+        fontSize: 20,
+        fontWeight: FontWeight.w700,
+        color: p.ink,
+        letterSpacing: -0.2,
+        height: 1.2,
+      );
+  static TextStyle title(Palette p) => TextStyle(
+      fontSize: 16,
+      fontWeight: FontWeight.w600,
+      color: p.ink,
+      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()]);
+  static TextStyle body(Palette p) => TextStyle(
+      fontSize: 14,
+      fontWeight: FontWeight.w500,
+      color: p.ink,
+      fontFeatures: const <FontFeature>[FontFeature.tabularFigures()]);
   static TextStyle sub(Palette p) =>
       TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: p.ink2, letterSpacing: 0.1);
   static TextStyle num(Palette p, double size) => TextStyle(
