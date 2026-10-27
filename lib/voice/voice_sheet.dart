@@ -32,31 +32,43 @@ class _VoiceSheet extends StatefulWidget {
   State<_VoiceSheet> createState() => _VoiceSheetState();
 }
 
-class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderStateMixin {
+class _VoiceSheetState extends State<_VoiceSheet>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late AnimationController _wave;
   late final TextEditingController _textCtrl;
   Timer? _ticker;
   Timer? _reparseDebounce;
 
-  _Stage _stage = _Stage.preparing;
-  String _message = '正在准备离线语音模型…';
+  _Stage _stage = _Stage.ready;
+  String _message = '按住下方按钮说话';
   int _seconds = 0;
   double _level = 0;
   VoiceIntent? _intent;
   final Set<String> _edited = <String>{};
   bool _holding = false;
 
+  /// 模型仍在后台准备；此时允许先按住说话，录音与加载并行
+  bool _modelLoading = false;
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _textCtrl = TextEditingController();
     _wave = AnimationController(vsync: this, duration: const Duration(milliseconds: 1200))..repeat();
     _textCtrl.addListener(_onTextChanged);
-    _boot();
+    unawaited(_boot());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 面板打开期间从后台回来，补一次预热（模型可能已被释放）
+    if (state == AppLifecycleState.resumed) _boot();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _ticker?.cancel();
     _reparseDebounce?.cancel();
     _wave.dispose();
@@ -67,6 +79,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
 
   Future<void> _boot() async {
     if (!asr.AsrEngine.supported) {
+      if (!mounted) return;
       setState(() {
         _stage = _Stage.error;
         _message = '当前平台不支持离线语音，请在 Android 客户端使用';
@@ -74,31 +87,35 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
       return;
     }
     if (asr.AsrEngine.isReady) {
+      if (!mounted) return;
       setState(() {
-        _stage = _Stage.ready;
-        _message = '按住下方按钮说话';
+        _modelLoading = false;
+        if (_stage == _Stage.ready) _message = '按住下方按钮说话';
       });
       return;
     }
-    await asr.AsrEngine.warmUp();
-    if (!mounted) return;
-    if (asr.AsrEngine.isReady) {
+    // 不阻塞界面：模型在后台准备，用户可以先按住说话
+    if (mounted) {
       setState(() {
-        _stage = _Stage.ready;
-        _message = '按住下方按钮说话';
-      });
-    } else {
-      setState(() {
-        _stage = _Stage.error;
-        _message = '模型加载失败，请重试';
+        _modelLoading = true;
+        if (_stage == _Stage.ready) _message = '模型准备中，可以先说话';
       });
     }
+    await asr.AsrEngine.warmUp();
+    if (!mounted) return;
+    final bool ready = asr.AsrEngine.isReady;
+    setState(() {
+      _modelLoading = !ready;
+      if (_stage == _Stage.ready) {
+        _message = ready ? '按住下方按钮说话' : '模型准备中，可以先说话';
+      }
+    });
   }
 
   // ---------------------------------------------------------------- 按住说话
 
   Future<void> _startHold() async {
-    if (_stage == _Stage.preparing || _stage == _Stage.recognizing || _holding) return;
+    if (_stage == _Stage.recognizing || _holding) return;
     HapticFeedback.mediumImpact();
     _holding = true;
     setState(() {
@@ -107,7 +124,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
       _intent = null;
       _edited.clear();
       _textCtrl.clear();
-      _message = '松手结束并识别';
+      _message = _modelLoading ? '模型准备中，可以先说话' : '松手结束并识别';
     });
     _ticker?.cancel();
     _ticker = Timer.periodic(const Duration(milliseconds: 120), (Timer t) {
@@ -163,6 +180,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
       if (text.trim().isEmpty) {
         setState(() {
           _stage = _Stage.ready;
+          _modelLoading = !asr.AsrEngine.isReady;
           _message = '没听清，再试一次';
         });
         return;
@@ -174,12 +192,14 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
         _intent = parsed;
         _stage = _Stage.review;
         _message = '';
+        _modelLoading = !asr.AsrEngine.isReady;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _stage = _Stage.ready;
-        _message = '识别失败，请重试';
+        _modelLoading = !asr.AsrEngine.isReady;
+        _message = asr.AsrEngine.isReady ? '识别失败，请重试' : '模型准备中，请再试一次';
       });
     }
   }
@@ -194,7 +214,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
     setState(() {
       _stage = _Stage.ready;
       _level = 0;
-      _message = '按住下方按钮说话';
+      _message = _modelLoading ? '模型准备中，可以先说话' : '按住下方按钮说话';
     });
   }
 
@@ -498,7 +518,7 @@ class _VoiceSheetState extends State<_VoiceSheet> with SingleTickerProviderState
   }
 
   Widget _holdButton(Palette p) {
-    final bool busy = _stage == _Stage.preparing || _stage == _Stage.recognizing;
+    final bool busy = _stage == _Stage.recognizing;
     final bool recording = _stage == _Stage.recording;
     return Listener(
       onPointerDown: (_) => _startHold(),

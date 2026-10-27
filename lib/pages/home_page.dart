@@ -11,6 +11,7 @@ import '../ui/add_sheet.dart';
 import '../ui/amount_keypad.dart';
 import '../ui/category_picker.dart';
 import '../ui/note_picker.dart';
+import '../ui/whale_mark.dart';
 import 'calendar_page.dart';
 import 'search_page.dart';
 import '../ui/common.dart';
@@ -95,7 +96,7 @@ class _HomePageState extends State<HomePage> {
     return SafeArea(
       bottom: false,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 132),
+        padding: const EdgeInsets.fromLTRB(18, 12, 18, 132),
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         children: <Widget>[
           _header(p, store),
@@ -235,10 +236,7 @@ class _HomePageState extends State<HomePage> {
               boxShadow: p.accentGlow,
             ),
             alignment: Alignment.center,
-            child: const Text(
-              '鲸',
-              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w700),
-            ),
+            child: const WhaleMark(size: 27, color: Colors.white),
           ),
         ),
       ],
@@ -527,6 +525,7 @@ class _HomePageState extends State<HomePage> {
           Row(
             children: ids.map((String id) {
               final CategoryDef c = catById(id);
+              final Color tone = soften(c.color, light: p.dark ? 0.06 : 0.03);
               return Expanded(
                 child: Pressable(
                   onTap: () async {
@@ -539,10 +538,10 @@ class _HomePageState extends State<HomePage> {
                         width: 46,
                         height: 46,
                         decoration: BoxDecoration(
-                          color: c.color.withOpacity(p.dark ? 0.18 : 0.12),
-                          borderRadius: BorderRadius.circular(16),
+                          color: tone.withOpacity(p.dark ? 0.20 : 0.13),
+                          borderRadius: BorderRadius.circular(R.m),
                         ),
-                        child: Icon(c.icon, size: 21, color: c.color),
+                        child: Icon(c.icon, size: 21, color: tone),
                       ),
                       const SizedBox(height: 6),
                       Text(

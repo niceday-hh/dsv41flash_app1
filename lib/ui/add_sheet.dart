@@ -185,6 +185,7 @@ class _BillSheetState extends State<_BillSheet> {
     required VoidCallback onTap,
     bool soft = false,
   }) {
+    final Color tone = soften(color, light: p.dark ? 0.06 : 0.03);
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
@@ -197,28 +198,28 @@ class _BillSheetState extends State<_BillSheet> {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15),
               border: Border.all(
-                color: on ? color.withOpacity(0.55) : Colors.transparent,
+                color: on ? tone.withOpacity(0.55) : Colors.transparent,
                 width: 1.6,
               ),
             ),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              width: 36,
-              height: 36,
+              width: 38,
+              height: 38,
               decoration: BoxDecoration(
-                color: soft ? p.cardSoft : (on ? color : color.withOpacity(p.dark ? 0.20 : 0.14)),
+                color: soft ? p.cardSoft : (on ? tone : tone.withOpacity(p.dark ? 0.20 : 0.14)),
                 borderRadius: BorderRadius.circular(11),
                 boxShadow: on
                     ? <BoxShadow>[
                         BoxShadow(
-                          color: color.withOpacity(0.30),
+                          color: tone.withOpacity(0.30),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),
                       ]
                     : null,
               ),
-              child: Icon(icon, size: 18, color: soft ? p.ink2 : (on ? Colors.white : color)),
+              child: Icon(icon, size: 18, color: soft ? p.ink2 : (on ? Colors.white : tone)),
             ),
           ),
           const SizedBox(height: 5),
@@ -229,7 +230,7 @@ class _BillSheetState extends State<_BillSheet> {
               fontSize: 10,
               height: 1.1,
               fontWeight: on ? FontWeight.w700 : FontWeight.w500,
-              color: on ? color : p.ink2,
+              color: on ? tone : p.ink2,
             ),
           ),
         ],
@@ -653,10 +654,9 @@ class _BillSheetState extends State<_BillSheet> {
                             return _catCell(
                               p,
                               icon: Icons.grid_view_rounded,
-                              color: p.ink2,
+                              color: p.accent,
                               label: '全部',
                               on: false,
-                              soft: true,
                               onTap: _showAllCategories,
                             );
                           }

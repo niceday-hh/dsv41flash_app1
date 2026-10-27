@@ -54,10 +54,37 @@ class AsrEngine {
     'tokens.txt': 'asr_tokens.txt',
   };
 
+  /// 模型代号：只有替换了 assets/asr 下的文件才需要改。
+  /// 用它代替“每次启动把 227MB 读进内存再比对”，启动阶段零大文件 IO。
+  static const String _modelRev = 'paraformer-zh-int8-r1';
+
+  /// 粗校验下限，防止拷贝被磁盘写满截断后仍然复用
+  static const int _minModelBytes = 200 * 1024 * 1024;
+  static const int _minTokensBytes = 50 * 1024;
+
   static Future<String> _ensureModel() async {
     final Directory base = await getApplicationSupportDirectory();
     final Directory dir = Directory('${base.path}/asr');
     if (!await dir.exists()) await dir.create(recursive: true);
+
+    final File stamp = File('${dir.path}/.model_rev');
+    final File model = File('${dir.path}/asr_model.int8.onnx');
+    final File tokens = File('${dir.path}/asr_tokens.txt');
+
+    bool sameRev = false;
+    if (await stamp.exists()) {
+      try {
+        sameRev = (await stamp.readAsString()).trim() == _modelRev;
+      } catch (_) {}
+    }
+    if (sameRev &&
+        await model.exists() &&
+        await model.length() > _minModelBytes &&
+        await tokens.exists() &&
+        await tokens.length() > _minTokensBytes) {
+      return dir.path;
+    }
+
     for (final MapEntry<String, String> e in _modelFiles.entries) {
       final File out = File('${dir.path}/${e.value}');
       final ByteData data = await rootBundle.load('assets/asr/${e.key}');
@@ -67,13 +94,17 @@ class AsrEngine {
         flush: true,
       );
     }
+    await stamp.writeAsString(_modelRev, flush: true);
     return dir.path;
   }
 
   /// 预热模型（不打开麦克风）。重复调用无副作用。
   static Future<void> warmUp() {
-    if (_disposed || _background) return Future<void>.value();
+    if (_disposed) return Future<void>.value();
+    // 先记下“用户希望常驻”，再判断前后台：否则首帧恰好处于后台时，
+    // 之后回到前台也不会再自动预热。
     _enabled = true;
+    if (_background) return Future<void>.value();
     final Future<void>? running = _preparing;
     if (running != null) return running;
     final Future<void> task = _prepare().catchError((Object _) {
@@ -85,8 +116,11 @@ class AsrEngine {
 
   static Future<void> _prepare() async {
     if (_commands != null) return;
+    if (_disposed) throw StateError('语音已关闭');
+    if (_background) throw StateError('语音已暂停');
     final String dir = await _ensureModel();
-    if (_disposed || _background) return;
+    if (_disposed) throw StateError('语音已关闭');
+    if (_background) throw StateError('语音已暂停');
     final ReceivePort responses = ReceivePort();
     final Completer<SendPort> ready = Completer<SendPort>();
     responses.listen((Object? message) {
@@ -151,7 +185,11 @@ class AsrEngine {
   // ---------------------------------------------------------------- 录音
 
   /// 开始采集，返回是否成功（会申请麦克风权限）
+  ///
+  /// 与录音并行推进模型准备：录音本身从不等待模型，这样即使冷启动后
+  /// 立刻按住说话，松手时模型通常已经就绪。
   static Future<bool> startCapture() async {
+    unawaited(warmUp());
     await cancelCapture();
     _pcm.clear();
     final bool ok = await Mic.start();

@@ -292,14 +292,15 @@ class _StatsPageState extends State<StatsPage> {
 
     final List<DonutSlice> slices = <DonutSlice>[];
     for (final MapEntry<String, double> e in ranked.take(5)) {
-      slices.add(DonutSlice(e.value, catById(e.key).color, catById(e.key).name));
+      slices.add(DonutSlice(e.value, soften(catById(e.key).color, light: p.dark ? 0.06 : 0.03),
+            catById(e.key).name));
     }
     if (ranked.length > 5) {
       double rest = 0;
       for (final MapEntry<String, double> e in ranked.skip(5)) {
         rest += e.value;
       }
-      slices.add(DonutSlice(rest, const Color(0xFFFFA726), '其他'));
+      slices.add(DonutSlice(rest, soften(const Color(0xFFFFA726), light: p.dark ? 0.06 : 0.03), '其他'));
     }
 
     final List<double> trend = _trendValues(store, _expense);
@@ -309,7 +310,7 @@ class _StatsPageState extends State<StatsPage> {
     return SafeArea(
       bottom: false,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 6, 18, 132),
+        padding: const EdgeInsets.fromLTRB(18, 14, 18, 132),
         physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         children: <Widget>[
           Row(
@@ -1158,7 +1159,8 @@ class _StatsPageState extends State<StatsPage> {
                                           minHeight: 5,
                                           backgroundColor:
                                               p.dark ? Colors.white.withOpacity(0.06) : const Color(0xFFF1F1F7),
-                                          valueColor: AlwaysStoppedAnimation<Color>(c.color),
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                              soften(c.color, light: p.dark ? 0.06 : 0.03)),
                                         );
                                       },
                                     ),

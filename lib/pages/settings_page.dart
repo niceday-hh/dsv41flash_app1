@@ -9,6 +9,7 @@ import '../version.dart';
 import '../voice/asr_engine.dart' as asr;
 import '../theme.dart';
 import '../ui/common.dart';
+import '../ui/whale_mark.dart';
 import 'calendar_settings_page.dart';
 
 class SettingsPage extends StatelessWidget {
@@ -363,10 +364,7 @@ class SettingsPage extends StatelessWidget {
                     boxShadow: p.accentGlow,
                   ),
                   alignment: Alignment.center,
-                  child: const Text(
-                    '鲸',
-                    style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w700),
-                  ),
+                  child: const WhaleMark(size: 30, color: Colors.white),
                 ),
                 const SizedBox(height: 10),
                 Text('鲸记账 · Whale Ledger', style: TextStyle(fontSize: 12, color: p.ink2, fontWeight: FontWeight.w600)),

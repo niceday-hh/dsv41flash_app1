@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../models.dart';
 import '../store.dart';
 import '../theme.dart';
+import 'whale_mark.dart';
 
 /// 全局状态作用域
 class AppScope extends InheritedNotifier<AppStore> {
@@ -154,7 +155,7 @@ class SoftCard extends StatelessWidget {
     Key? key,
     required this.child,
     this.padding = const EdgeInsets.all(18),
-    this.radius = 26,
+    this.radius = R.xl,
     this.color,
     this.gradient,
     this.onTap,
@@ -172,7 +173,7 @@ class SoftCard extends StatelessWidget {
         color: gradient == null ? (color ?? p.card) : null,
         gradient: gradient,
         borderRadius: BorderRadius.circular(radius),
-        border: border,
+        border: border ?? p.hairline,
         boxShadow: p.shadow,
       ),
       child: child,
@@ -234,14 +235,15 @@ class CatBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Palette p = AppScope.paletteOf(context);
+    final Color tone = soften(cat.color, light: p.dark ? 0.02 : 0.03);
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: solid ? cat.color : cat.color.withOpacity(p.dark ? 0.20 : 0.14),
+        color: solid ? tone : tone.withOpacity(p.dark ? 0.20 : 0.13),
         borderRadius: BorderRadius.circular(size * 0.34),
       ),
-      child: Icon(cat.icon, size: iconSize, color: solid ? Colors.white : cat.color),
+      child: Icon(cat.icon, size: iconSize, color: solid ? Colors.white : tone),
     );
   }
 }
@@ -306,7 +308,7 @@ class Segmented extends StatelessWidget {
       height: h,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: p.dark ? Colors.white.withOpacity(0.06) : const Color(0xFFEDEEF6),
+        color: p.dark ? Colors.white.withOpacity(0.075) : const Color(0xFFE7E9F3),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
@@ -325,8 +327,8 @@ class Segmented extends StatelessWidget {
                 borderRadius: BorderRadius.circular(9),
                 boxShadow: <BoxShadow>[
                   BoxShadow(
-                    color: Colors.black.withOpacity(p.dark ? 0.3 : 0.08),
-                    blurRadius: 6,
+                    color: Colors.black.withOpacity(p.dark ? 0.32 : 0.10),
+                    blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
                 ],
@@ -450,8 +452,16 @@ class EmptyState extends StatelessWidget {
   final String desc;
   final IconData icon;
 
-  const EmptyState({Key? key, required this.title, required this.desc, this.icon = Icons.receipt_long_rounded})
-      : super(key: key);
+  /// 默认用品牌鲸鱼替代通用图标
+  final bool whaleMark;
+
+  const EmptyState({
+    Key? key,
+    required this.title,
+    required this.desc,
+    this.icon = Icons.receipt_long_rounded,
+    this.whaleMark = true,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -470,9 +480,12 @@ class EmptyState extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(26),
+              borderRadius: BorderRadius.circular(R.l),
             ),
-            child: Icon(icon, color: p.accent, size: 30),
+            alignment: Alignment.center,
+            child: whaleMark
+                ? WhaleMark(size: 44, color: p.accent, eyeColor: p.accent, sprayColor: p.accent)
+                : Icon(icon, color: p.accent, size: 30),
           ),
           const SizedBox(height: 18),
           Text(title, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: p.ink)),

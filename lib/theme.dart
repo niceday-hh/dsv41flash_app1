@@ -26,6 +26,25 @@ const List<String> kFontFallback = <String>[
   'Roboto',
 ];
 
+/// 圆角体系：全局只使用这四档，避免 9/12/22/26/28 混用造成“拼接感”。
+class R {
+  const R._();
+  static const double s = 10; // 小标签、chip
+  static const double m = 14; // 输入框、图标底
+  static const double l = 20; // 按钮、次级卡片
+  static const double xl = 28; // 主卡片
+}
+
+/// 分类色的统一“降噪”处理：压低饱和度、轻微提亮，
+/// 让 40+ 个分类放在一起时不至于糖果色过载。
+Color soften(Color c, {double sat = 0.72, double light = 0.04}) {
+  final HSLColor hsl = HSLColor.fromColor(c);
+  return hsl
+      .withSaturation((hsl.saturation * sat).clamp(0.0, 1.0))
+      .withLightness((hsl.lightness + light).clamp(0.0, 1.0))
+      .toColor();
+}
+
 class Palette {
   final bool dark;
   final Color bg;
@@ -62,14 +81,14 @@ class Palette {
     if (dark) {
       return Palette(
         dark: true,
-        bg: const Color(0xFF0A0B12),
-        bgAlt: const Color(0xFF12131D),
-        card: const Color(0xFF161824),
-        cardSoft: const Color(0xFF1E2030),
+        bg: const Color(0xFF0B0C14),
+        bgAlt: const Color(0xFF14151F),
+        card: const Color(0xFF1A1C2B),
+        cardSoft: const Color(0xFF232538),
         ink: const Color(0xFFF3F4F9),
         ink2: const Color(0xFF9AA0B8),
         ink3: const Color(0xFF737A93),
-        line: const Color(0xFF252739),
+        line: const Color(0xFF2C2F44),
         accent: pair[0],
         accent2: pair[1],
         expense: const Color(0xFFFF6E8A),
@@ -126,6 +145,10 @@ class Palette {
   List<BoxShadow> get accentGlow => <BoxShadow>[
         BoxShadow(color: accent.withOpacity(dark ? 0.42 : 0.30), blurRadius: 26, offset: const Offset(0, 12)),
       ];
+
+  /// 深色模式下卡片与背景对比偏弱，用 1px 高光描边勾出边界
+  Border? get hairline =>
+      dark ? Border.all(color: Colors.white.withOpacity(0.065), width: 1) : null;
 }
 
 /// 全局文字样式助手
