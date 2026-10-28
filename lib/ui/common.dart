@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -86,19 +87,35 @@ String timeLabel(DateTime d) {
 
 /// 按下缩放反馈（iOS 触感）
 class Pressable extends StatefulWidget {
-  final Widget child;
+  final Widget? child;
+
+  /// 需要按压态自绘（例如键盘按键按下时加深底色）时使用，
+  /// 传入后优先于 [child]。
+  final Widget Function(bool down)? builder;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
   final double scale;
   final bool tapEnabled;
 
+  /// 下压 / 回弹时长。快速点击时下压要够快，回弹可以慢一点更跟手。
+  final int downMs;
+  final int upMs;
+
+  /// 抬起后保持按压态的最短时间。
+  /// 普通点击只有 60~100ms，若立刻回弹，3% 的缩放几乎看不见。
+  final int holdMs;
+
   const Pressable({
     Key? key,
-    required this.child,
+    this.child,
+    this.builder,
     this.onTap,
     this.onLongPress,
     this.scale = 0.96,
     this.tapEnabled = true,
+    this.downMs = 70,
+    this.upMs = 150,
+    this.holdMs = 70,
   }) : super(key: key);
 
   @override
@@ -107,36 +124,66 @@ class Pressable extends StatefulWidget {
 
 class _PressableState extends State<Pressable> {
   bool _down = false;
+  Timer? _release;
 
   void _set(bool v) {
     if (!mounted || _down == v) return;
     setState(() => _down = v);
   }
 
+  void _press() {
+    _release?.cancel();
+    _set(true);
+  }
+
+  void _unpress() {
+    _release?.cancel();
+    if (!_down) return;
+    if (widget.holdMs <= 0) {
+      _set(false);
+      return;
+    }
+    _release = Timer(Duration(milliseconds: widget.holdMs), () => _set(false));
+  }
+
+  @override
+  void dispose() {
+    _release?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTapDown: widget.tapEnabled ? (_) => _set(true) : null,
-      onTapUp: widget.tapEnabled ? (_) => _set(false) : null,
-      onTapCancel: widget.tapEnabled ? () => _set(false) : null,
-      onLongPress: widget.onLongPress == null
-          ? null
-          : () {
-              HapticFeedback.mediumImpact();
-              widget.onLongPress!();
-            },
-      onTap: widget.onTap == null
-          ? null
-          : () {
-              HapticFeedback.selectionClick();
-              widget.onTap!();
-            },
-      child: AnimatedScale(
-        scale: _down ? widget.scale : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOut,
-        child: widget.child,
+    final Widget scaled = AnimatedScale(
+      scale: _down ? widget.scale : 1.0,
+      duration: Duration(milliseconds: _down ? widget.downMs : widget.upMs),
+      curve: _down ? Curves.easeOutCubic : Curves.easeOutBack,
+      child: widget.builder?.call(_down) ?? widget.child,
+    );
+
+    // 关键：按压态用 Listener 而不是 GestureDetector.onTapDown。
+    // onTapDown 要等手势竞技场判定（约 100ms），快速点击时
+    // down/up 会落在同一帧，缩放动画根本没机会开始——看起来就是「按了没反应」。
+    // Listener 在 pointerdown 当帧就能响应，和系统按钮手感一致。
+    return Listener(
+      onPointerDown: widget.tapEnabled ? (_) => _press() : null,
+      onPointerUp: widget.tapEnabled ? (_) => _unpress() : null,
+      onPointerCancel: widget.tapEnabled ? (_) => _unpress() : null,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onLongPress: widget.onLongPress == null
+            ? null
+            : () {
+                HapticFeedback.mediumImpact();
+                widget.onLongPress!();
+              },
+        onTap: widget.onTap == null
+            ? null
+            : () {
+                HapticFeedback.selectionClick();
+                widget.onTap!();
+              },
+        child: scaled,
       ),
     );
   }
@@ -192,7 +239,12 @@ class SectionTitle extends StatelessWidget {
   final VoidCallback? onAction;
   final Widget? trailing;
 
-  const SectionTitle({Key? key, required this.title, this.action, this.onAction, this.trailing})
+  const SectionTitle(
+      {Key? key,
+      required this.title,
+      this.action,
+      this.onAction,
+      this.trailing})
       : super(key: key);
 
   @override
@@ -202,7 +254,12 @@ class SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
       child: Row(
         children: <Widget>[
-          Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: p.ink, letterSpacing: -0.2)),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: p.ink,
+                  letterSpacing: -0.2)),
           const Spacer(),
           if (trailing != null) trailing!,
           if (action != null)
@@ -211,7 +268,11 @@ class SectionTitle extends StatelessWidget {
               behavior: HitTestBehavior.opaque,
               child: Row(
                 children: <Widget>[
-                  Text(action!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.ink2)),
+                  Text(action!,
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: p.ink2)),
                   Icon(Icons.chevron_right_rounded, size: 16, color: p.ink3),
                 ],
               ),
@@ -229,7 +290,12 @@ class CatBubble extends StatelessWidget {
   final double iconSize;
   final bool solid;
 
-  const CatBubble({Key? key, required this.cat, this.size = 42, this.iconSize = 20, this.solid = false})
+  const CatBubble(
+      {Key? key,
+      required this.cat,
+      this.size = 42,
+      this.iconSize = 20,
+      this.solid = false})
       : super(key: key);
 
   @override
@@ -308,7 +374,8 @@ class Segmented extends StatelessWidget {
       height: h,
       padding: const EdgeInsets.all(3),
       decoration: BoxDecoration(
-        color: p.dark ? Colors.white.withOpacity(0.075) : const Color(0xFFE7E9F3),
+        color:
+            p.dark ? Colors.white.withOpacity(0.075) : const Color(0xFFE7E9F3),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
@@ -386,31 +453,42 @@ class GlassPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Palette p = AppScope.paletteOf(context);
+    final Widget panel = Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: p.dark
+            ? Color.lerp(
+                    const Color(0xFF151723), const Color(0xFF1B1E2C), opacity)!
+                .withOpacity(opacity + 0.14)
+            : Colors.white.withOpacity(opacity),
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(
+          color: p.dark
+              ? Colors.white.withOpacity(0.07)
+              : Colors.white.withOpacity(0.85),
+          width: 1.2,
+        ),
+      ),
+      child: child,
+    );
+    // blur <= 0 时不挂 BackdropFilter：几乎不透明时磨砂看不出来，
+    // 但模糊是每帧都要重新采样背景的，滚动时会实打实掉帧。
+    if (blur <= 0)
+      return ClipRRect(
+          borderRadius: BorderRadius.circular(radius), child: panel);
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: p.dark
-                ? Color.lerp(const Color(0xFF151723), const Color(0xFF1B1E2C), opacity)!.withOpacity(opacity + 0.14)
-                : Colors.white.withOpacity(opacity),
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(
-              color: p.dark ? Colors.white.withOpacity(0.07) : Colors.white.withOpacity(0.85),
-              width: 1.2,
-            ),
-          ),
-          child: child,
-        ),
+        child: panel,
       ),
     );
   }
 }
 
 /// 轻量 toast
-void showToast(BuildContext context, String msg, {IconData icon = Icons.check_circle_rounded}) {
+void showToast(BuildContext context, String msg,
+    {IconData icon = Icons.check_circle_rounded}) {
   final ScaffoldMessengerState messenger = ScaffoldMessenger.of(context);
   messenger.clearSnackBars();
   messenger.showSnackBar(
@@ -435,7 +513,10 @@ void showToast(BuildContext context, String msg, {IconData icon = Icons.check_ci
             Flexible(
               child: Text(
                 msg,
-                style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w500),
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -476,7 +557,10 @@ class EmptyState extends StatelessWidget {
             height: 74,
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: <Color>[p.accent.withOpacity(0.16), p.accent2.withOpacity(0.10)],
+                colors: <Color>[
+                  p.accent.withOpacity(0.16),
+                  p.accent2.withOpacity(0.10)
+                ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -484,13 +568,21 @@ class EmptyState extends StatelessWidget {
             ),
             alignment: Alignment.center,
             child: whaleMark
-                ? WhaleMark(size: 44, color: p.accent, eyeColor: p.accent, sprayColor: p.accent)
+                ? WhaleMark(
+                    size: 44,
+                    color: p.accent,
+                    eyeColor: p.accent,
+                    sprayColor: p.accent)
                 : Icon(icon, color: p.accent, size: 30),
           ),
           const SizedBox(height: 18),
-          Text(title, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, color: p.ink)),
+          Text(title,
+              style: TextStyle(
+                  fontSize: 15.5, fontWeight: FontWeight.w700, color: p.ink)),
           const SizedBox(height: 6),
-          Text(desc, style: TextStyle(fontSize: 12.5, color: p.ink2), textAlign: TextAlign.center),
+          Text(desc,
+              style: TextStyle(fontSize: 12.5, color: p.ink2),
+              textAlign: TextAlign.center),
         ],
       ),
     );

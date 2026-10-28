@@ -20,14 +20,16 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin {
+class _AppShellState extends State<AppShell>
+    with SingleTickerProviderStateMixin {
   int _index = 0;
   late AnimationController _fade;
 
   @override
   void initState() {
     super.initState();
-    _fade = AnimationController(vsync: this, duration: const Duration(milliseconds: 320), value: 1);
+    _fade = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 240), value: 1);
   }
 
   @override
@@ -83,7 +85,8 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
                 position: Tween<Offset>(
                   begin: const Offset(0, 0.014),
                   end: Offset.zero,
-                ).animate(CurvedAnimation(parent: _fade, curve: Curves.easeOutCubic)),
+                ).animate(
+                    CurvedAnimation(parent: _fade, curve: Curves.easeOutCubic)),
                 // 平板 / 折叠屏上限制内容宽度，避免整页被拉成一条长线
                 child: Align(
                   alignment: Alignment.topCenter,
@@ -114,7 +117,11 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: <Color>[p.bg.withOpacity(0), p.bg.withOpacity(0.92), p.bg],
+                      colors: <Color>[
+                        p.bg.withOpacity(0),
+                        p.bg.withOpacity(0.92),
+                        p.bg
+                      ],
                       stops: const <double>[0, 0.55, 1],
                     ),
                   ),
@@ -148,22 +155,29 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
   Widget _navBar(Palette p) {
     return GlassPanel(
       radius: 28,
-      opacity: 0.99,
-      blur: 26,
+      opacity: 0.985,
+      // 面板本身已接近不透明，磨砂几乎看不出，却要每帧重采样背景。
+      // 关掉模糊，滚动时的底栏合成成本直接归零。
+      blur: 0,
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
       child: Row(
         children: <Widget>[
-          _navItem(p, 0, Icons.receipt_long_rounded, Icons.receipt_long_outlined, '明细'),
-          _navItem(p, 1, Icons.donut_large_rounded, Icons.donut_large_outlined, '图表'),
+          _navItem(p, 0, Icons.receipt_long_rounded,
+              Icons.receipt_long_outlined, '明细'),
+          _navItem(p, 1, Icons.donut_large_rounded, Icons.donut_large_outlined,
+              '图表'),
           Expanded(child: _addButton(p)),
-          _navItem(p, 2, Icons.pie_chart_rounded, Icons.pie_chart_outline_rounded, '预算'),
-          _navItem(p, 3, Icons.person_rounded, Icons.person_outline_rounded, '我的'),
+          _navItem(p, 2, Icons.pie_chart_rounded,
+              Icons.pie_chart_outline_rounded, '预算'),
+          _navItem(
+              p, 3, Icons.person_rounded, Icons.person_outline_rounded, '我的'),
         ],
       ),
     );
   }
 
-  Widget _navItem(Palette p, int i, IconData active, IconData normal, String label) {
+  Widget _navItem(
+      Palette p, int i, IconData active, IconData normal, String label) {
     final bool on = _index == i;
     return Expanded(
       child: GestureDetector(
@@ -205,7 +219,6 @@ class _AppShellState extends State<AppShell> with SingleTickerProviderStateMixin
   Widget _addButton(Palette p) {
     return EntryLauncher(onManual: _add, onVoice: _voice);
   }
-
 }
 
 /// 背景光晕

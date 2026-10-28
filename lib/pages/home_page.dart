@@ -53,12 +53,17 @@ class _HomePageState extends State<HomePage> {
   /// 与上月同期对比
   double _momDelta(double current) {
     final DateTime prevMonth = DateTime(_month.year, _month.month - 1, 1);
-    final int lastDayPrev = DateTime(prevMonth.year, prevMonth.month + 1, 0).day;
-    final int upto = _isCurrentMonth ? DateTime.now().day.clamp(1, lastDayPrev) : lastDayPrev;
+    final int lastDayPrev =
+        DateTime(prevMonth.year, prevMonth.month + 1, 0).day;
+    final int upto = _isCurrentMonth
+        ? DateTime.now().day.clamp(1, lastDayPrev)
+        : lastDayPrev;
     double prev = 0;
     for (final Bill b in AppScope.storeOf(context).bills) {
       if (!b.expense) continue;
-      if (b.date.year == prevMonth.year && b.date.month == prevMonth.month && b.date.day <= upto) {
+      if (b.date.year == prevMonth.year &&
+          b.date.month == prevMonth.month &&
+          b.date.day <= upto) {
         prev += b.amount;
       }
     }
@@ -97,7 +102,8 @@ class _HomePageState extends State<HomePage> {
       bottom: false,
       child: ListView(
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 132),
-        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+        physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics()),
         children: <Widget>[
           _header(p, store),
           const SizedBox(height: 18),
@@ -110,13 +116,18 @@ class _HomePageState extends State<HomePage> {
             action: '日历',
             onAction: () {
               Navigator.of(context).push(PageRouteBuilder<bool>(
-                pageBuilder: (BuildContext c, Animation<double> a, Animation<double> s) => const CalendarPage(),
-                transitionsBuilder: (BuildContext c, Animation<double> a, Animation<double> s, Widget child) {
+                pageBuilder: (BuildContext c, Animation<double> a,
+                        Animation<double> s) =>
+                    const CalendarPage(),
+                transitionsBuilder: (BuildContext c, Animation<double> a,
+                    Animation<double> s, Widget child) {
                   return FadeTransition(
                     opacity: a,
                     child: SlideTransition(
-                      position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
-                          .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+                      position: Tween<Offset>(
+                              begin: const Offset(0, 0.03), end: Offset.zero)
+                          .animate(CurvedAnimation(
+                              parent: a, curve: Curves.easeOutCubic)),
                       child: child,
                     ),
                   );
@@ -127,7 +138,8 @@ class _HomePageState extends State<HomePage> {
               children: <Widget>[
                 Text(
                   '共 ${monthBills.length} 笔',
-                  style: TextStyle(fontSize: 12, color: p.ink3, fontWeight: FontWeight.w500),
+                  style: TextStyle(
+                      fontSize: 12, color: p.ink3, fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(width: 6),
               ],
@@ -142,16 +154,17 @@ class _HomePageState extends State<HomePage> {
             _Reveal(
               key: ValueKey<String>('$_revealKey-month'),
               delay: 40,
-              child: SoftCard(
-                padding: EdgeInsets.zero,
-                child: Column(
-                  children: <Widget>[
-                    for (int i = 0; i < groups.length; i++) ...<Widget>[
-                      _daySection(p, store, groups[i], isFirst: i == 0),
-                      if (i != groups.length - 1)
-                        Divider(height: 1, thickness: 1, color: p.line, indent: 16, endIndent: 16),
+              // 整月账单是一棵很大的子树，给它独立图层：
+              // 滚动与淡入时直接复用位图，不必每帧重绘每一行。
+              child: RepaintBoundary(
+                child: SoftCard(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    children: <Widget>[
+                      for (int i = 0; i < groups.length; i++)
+                        _daySection(p, store, groups[i], isFirst: i == 0),
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -176,7 +189,8 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 4),
               Text(
                 '今天也要认真对待每一笔开销',
-                style: TextStyle(fontSize: 12.5, color: p.ink2, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    fontSize: 12.5, color: p.ink2, fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -184,13 +198,18 @@ class _HomePageState extends State<HomePage> {
         Pressable(
           onTap: () {
             Navigator.of(context).push(PageRouteBuilder<bool>(
-              pageBuilder: (BuildContext c, Animation<double> a, Animation<double> s) => const SearchPage(),
-              transitionsBuilder: (BuildContext c, Animation<double> a, Animation<double> s, Widget child) {
+              pageBuilder:
+                  (BuildContext c, Animation<double> a, Animation<double> s) =>
+                      const SearchPage(),
+              transitionsBuilder: (BuildContext c, Animation<double> a,
+                  Animation<double> s, Widget child) {
                 return FadeTransition(
                   opacity: a,
                   child: SlideTransition(
-                    position: Tween<Offset>(begin: const Offset(0, 0.03), end: Offset.zero)
-                        .animate(CurvedAnimation(parent: a, curve: Curves.easeOutCubic)),
+                    position: Tween<Offset>(
+                            begin: const Offset(0, 0.03), end: Offset.zero)
+                        .animate(CurvedAnimation(
+                            parent: a, curve: Curves.easeOutCubic)),
                     child: child,
                   ),
                 );
@@ -212,19 +231,24 @@ class _HomePageState extends State<HomePage> {
         Pressable(
           onTap: () {
             HapticFeedback.selectionClick();
-            AppScope.storeOf(context).setHideAmounts(!AppScope.storeOf(context).hideAmounts);
+            AppScope.storeOf(context)
+                .setHideAmounts(!AppScope.storeOf(context).hideAmounts);
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 220),
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: AppScope.storeOf(context).hideAmounts ? p.accent.withOpacity(0.12) : p.card,
+              color: AppScope.storeOf(context).hideAmounts
+                  ? p.accent.withOpacity(0.12)
+                  : p.card,
               borderRadius: BorderRadius.circular(14),
               boxShadow: p.shadow,
             ),
             child: Icon(
-              AppScope.storeOf(context).hideAmounts ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+              AppScope.storeOf(context).hideAmounts
+                  ? Icons.visibility_off_rounded
+                  : Icons.visibility_rounded,
               size: 19,
               color: AppScope.storeOf(context).hideAmounts ? p.accent : p.ink2,
             ),
@@ -232,7 +256,8 @@ class _HomePageState extends State<HomePage> {
         ),
         const SizedBox(width: 10),
         Pressable(
-          onTap: () => showToast(context, '这是你的专属账本', icon: Icons.favorite_rounded),
+          onTap: () =>
+              showToast(context, '这是你的专属账本', icon: Icons.favorite_rounded),
           child: Container(
             width: 40,
             height: 40,
@@ -249,10 +274,12 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _heroCard(Palette p, double expense, double income, double delta, double dailyAvg) {
+  Widget _heroCard(
+      Palette p, double expense, double income, double delta, double dailyAvg) {
     final bool up = delta > 0;
     final double budget = AppScope.storeOf(context).monthlyBudget;
-    final double budgetPct = budget <= 0 ? 0 : (expense / budget * 100).clamp(0, 999);
+    final double budgetPct =
+        budget <= 0 ? 0 : (expense / budget * 100).clamp(0, 999);
     final String deltaText = delta.abs() < 0.0001
         ? '与上月持平'
         : '较上月 ${up ? '↑' : '↓'} ${(delta.abs() * 100).toStringAsFixed(1)}%';
@@ -305,14 +332,16 @@ class _HomePageState extends State<HomePage> {
                       _monthSwitcher(p),
                       const Spacer(),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.18),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Row(
                           children: <Widget>[
-                            Icon(Icons.savings_rounded, size: 11, color: Colors.white),
+                            Icon(Icons.savings_rounded,
+                                size: 11, color: Colors.white),
                             const SizedBox(width: 3),
                             Text(
                               '预算已用 ${budgetPct.toStringAsFixed(0)}%',
@@ -330,7 +359,10 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(height: 16),
                   Text(
                     _isCurrentMonth ? '本月支出' : '当月支出',
-                    style: TextStyle(fontSize: 12.5, color: Colors.white.withOpacity(0.82), fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        color: Colors.white.withOpacity(0.82),
+                        fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 4),
                   Row(
@@ -357,7 +389,9 @@ class _HomePageState extends State<HomePage> {
                             color: Colors.white,
                             letterSpacing: -1.6,
                             height: 1.0,
-                            fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                            fontFeatures: const <FontFeature>[
+                              FontFeature.tabularFigures()
+                            ],
                           ),
                         ),
                       ),
@@ -396,10 +430,19 @@ class _HomePageState extends State<HomePage> {
                     child: Row(
                       children: <Widget>[
                         _heroStat('本月收入', income, Icons.south_west_rounded),
-                        Container(width: 1, height: 24, color: Colors.white.withOpacity(0.18)),
-                        _heroStat('本月结余', income - expense, Icons.account_balance_wallet_rounded),
-                        Container(width: 1, height: 24, color: Colors.white.withOpacity(0.18)),
-                        _heroStat('记账笔数', _monthBillCount(), Icons.receipt_long_rounded, isCount: true),
+                        Container(
+                            width: 1,
+                            height: 24,
+                            color: Colors.white.withOpacity(0.18)),
+                        _heroStat('本月结余', income - expense,
+                            Icons.account_balance_wallet_rounded),
+                        Container(
+                            width: 1,
+                            height: 24,
+                            color: Colors.white.withOpacity(0.18)),
+                        _heroStat('记账笔数', _monthBillCount(),
+                            Icons.receipt_long_rounded,
+                            isCount: true),
                       ],
                     ),
                   ),
@@ -412,9 +455,11 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  int _monthBillCount() => AppStore.inMonth(AppScope.storeOf(context).bills, _month).length;
+  int _monthBillCount() =>
+      AppStore.inMonth(AppScope.storeOf(context).bills, _month).length;
 
-  Widget _heroStat(String label, num value, IconData icon, {bool isCount = false}) {
+  Widget _heroStat(String label, num value, IconData icon,
+      {bool isCount = false}) {
     return Expanded(
       child: Column(
         children: <Widget>[
@@ -425,13 +470,18 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(width: 3),
               Text(
                 label,
-                style: TextStyle(fontSize: 10.5, color: Colors.white.withOpacity(0.75), fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    fontSize: 10.5,
+                    color: Colors.white.withOpacity(0.75),
+                    fontWeight: FontWeight.w500),
               ),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            isCount ? '${value.toInt()}' : AppScope.storeOf(context).money(value),
+            isCount
+                ? '${value.toInt()}'
+                : AppScope.storeOf(context).money(value),
             style: const TextStyle(
               fontSize: 13.5,
               fontWeight: FontWeight.w700,
@@ -453,22 +503,29 @@ class _HomePageState extends State<HomePage> {
           behavior: HitTestBehavior.opaque,
           child: Padding(
             padding: const EdgeInsets.only(right: 8, top: 6, bottom: 6),
-            child: Icon(Icons.chevron_left_rounded, size: 20, color: Colors.white.withOpacity(0.9)),
+            child: Icon(Icons.chevron_left_rounded,
+                size: 20, color: Colors.white.withOpacity(0.9)),
           ),
         ),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 220),
-          transitionBuilder: (Widget child, Animation<double> a) => FadeTransition(
+          transitionBuilder: (Widget child, Animation<double> a) =>
+              FadeTransition(
             opacity: a,
             child: SlideTransition(
-              position: Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero).animate(a),
+              position:
+                  Tween<Offset>(begin: const Offset(0, 0.3), end: Offset.zero)
+                      .animate(a),
               child: child,
             ),
           ),
           child: Text(
             monthLabel(_month),
             key: ValueKey<String>(monthLabel(_month)),
-            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Colors.white),
+            style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w600,
+                color: Colors.white),
           ),
         ),
         GestureDetector(
@@ -500,7 +557,10 @@ class _HomePageState extends State<HomePage> {
               ),
               child: const Text(
                 '回到本月',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.white),
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white),
               ),
             ),
           ),
@@ -522,7 +582,11 @@ class _HomePageState extends State<HomePage> {
               children: <Widget>[
                 Icon(Icons.bolt_rounded, size: 15, color: p.accent),
                 const SizedBox(width: 4),
-                Text('快捷记账', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: p.ink)),
+                Text('快捷记账',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: p.ink)),
                 const Spacer(),
                 Text('点击快速记账', style: TextStyle(fontSize: 10.5, color: p.ink3)),
               ],
@@ -535,8 +599,10 @@ class _HomePageState extends State<HomePage> {
               return Expanded(
                 child: Pressable(
                   onTap: () async {
-                    final bool? ok = await showAddBillSheet(context, expense: true, catId: id);
-                    if (ok == true && mounted) showToast(context, '已记入 ${c.name}');
+                    final bool? ok = await showAddBillSheet(context,
+                        expense: true, catId: id);
+                    if (ok == true && mounted)
+                      showToast(context, '已记入 ${c.name}');
                   },
                   child: Column(
                     children: <Widget>[
@@ -552,7 +618,10 @@ class _HomePageState extends State<HomePage> {
                       const SizedBox(height: 6),
                       Text(
                         c.name,
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: p.ink2),
+                        style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: p.ink2),
                       ),
                     ],
                   ),
@@ -565,13 +634,32 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _daySection(Palette p, AppStore store, DayGroup g, {bool isFirst = false}) {
+  Widget _daySection(Palette p, AppStore store, DayGroup g,
+      {bool isFirst = false}) {
     final bool today = _isToday(g.day);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Padding(
-          padding: EdgeInsets.fromLTRB(14, isFirst ? 14 : 12, 16, 6),
+        // 日期是分组头：通栏浅色底带 + 上下细线，与白底的账单行明确分层
+        Container(
+          padding: const EdgeInsets.fromLTRB(14, 8, 16, 8),
+          decoration: BoxDecoration(
+            color: today
+                ? (p.dark
+                    ? p.accent.withOpacity(0.11)
+                    : p.accent.withOpacity(0.055))
+                : (p.dark
+                    ? Colors.white.withOpacity(0.038)
+                    : const Color(0xFFF4F5FA)),
+            borderRadius: isFirst
+                ? BorderRadius.vertical(top: Radius.circular(R.xl))
+                : BorderRadius.zero,
+            border: Border(
+              top: BorderSide(
+                  color: isFirst ? Colors.transparent : p.line, width: 1),
+              bottom: BorderSide(color: p.line, width: 1),
+            ),
+          ),
           child: Row(
             children: <Widget>[
               _dayPill(p, g.day, today),
@@ -583,33 +671,58 @@ class _HomePageState extends State<HomePage> {
                     children: <Widget>[
                       Text(
                         dayLabel(g.day),
-                        style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: p.ink),
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: p.ink,
+                          letterSpacing: 0.2,
+                        ),
                       ),
                       const SizedBox(width: 6),
                       Text(
                         '${g.bills.length} 笔',
-                        style: TextStyle(fontSize: 10.5, color: p.ink3, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                            fontSize: 10,
+                            color: p.ink3,
+                            fontWeight: FontWeight.w600),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Text(
                     '${g.day.month} 月 ${g.day.day} 日',
-                    style: TextStyle(fontSize: 10.5, color: p.ink3, fontWeight: FontWeight.w500),
+                    style: TextStyle(
+                        fontSize: 10,
+                        color: p.ink3,
+                        fontWeight: FontWeight.w500),
                   ),
                 ],
               ),
               const Spacer(),
               if (g.expense > 0)
                 Text(
-                  '支 ${store.money(g.expense)}',
-                  style: TextStyle(fontSize: 11.5, color: p.ink2, fontWeight: FontWeight.w700),
+                  '合计 ${store.money(g.expense)}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: p.ink2,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const <FontFeature>[
+                      FontFeature.tabularFigures()
+                    ],
+                  ),
                 ),
               if (g.expense > 0 && g.income > 0) const SizedBox(width: 8),
               if (g.income > 0)
                 Text(
                   '收 ${store.money(g.income)}',
-                  style: TextStyle(fontSize: 11.5, color: p.income, fontWeight: FontWeight.w700),
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: p.income,
+                    fontWeight: FontWeight.w700,
+                    fontFeatures: const <FontFeature>[
+                      FontFeature.tabularFigures()
+                    ],
+                  ),
                 ),
             ],
           ),
@@ -633,10 +746,12 @@ class _HomePageState extends State<HomePage> {
   /// 日期胶囊：作为连续时间轴上的节点，今天用品牌色实心
   Widget _dayPill(Palette p, DateTime day, bool today) {
     return Container(
-      width: 40,
-      height: 42,
+      width: 36,
+      height: 38,
       decoration: BoxDecoration(
-        color: today ? p.accent : (p.dark ? Colors.white.withOpacity(0.06) : p.cardSoft),
+        color: today
+            ? p.accent
+            : (p.dark ? Colors.white.withOpacity(0.07) : Colors.white),
         borderRadius: BorderRadius.circular(R.m),
         boxShadow: today ? p.accentGlow : null,
       ),
@@ -683,7 +798,11 @@ class _HomePageState extends State<HomePage> {
       ),
       child: Text(
         c.name,
-        style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: c.color, height: 1.2),
+        style: TextStyle(
+            fontSize: 9.5,
+            fontWeight: FontWeight.w700,
+            color: c.color,
+            height: 1.2),
       ),
     );
   }
@@ -744,7 +863,10 @@ class _HomePageState extends State<HomePage> {
                           Flexible(
                             child: Text(
                               title,
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: p.ink),
+                              style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: p.ink),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -758,7 +880,10 @@ class _HomePageState extends State<HomePage> {
                       const SizedBox(height: 3),
                       Text(
                         timeLabel(b.date),
-                        style: TextStyle(fontSize: 11, color: p.ink3, fontWeight: FontWeight.w500),
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: p.ink3,
+                            fontWeight: FontWeight.w500),
                       ),
                     ],
                   ),
@@ -770,7 +895,8 @@ class _HomePageState extends State<HomePage> {
                 onTap: () => _editAmount(b),
                 behavior: HitTestBehavior.opaque,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 6, horizontal: 2),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(minWidth: 84),
                     child: Text(
@@ -781,7 +907,9 @@ class _HomePageState extends State<HomePage> {
                         fontWeight: FontWeight.w700,
                         color: b.expense ? p.ink : p.income,
                         letterSpacing: -0.4,
-                        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures()
+                        ],
                       ),
                     ),
                   ),
@@ -808,7 +936,8 @@ class _HomePageState extends State<HomePage> {
     if (picked == null || picked == b.catId || !mounted) return;
     store.updateBill(b.copyWith(catId: picked));
     if (mounted) {
-      showToast(context, '已改为「${catById(picked).name}」', icon: Icons.category_rounded);
+      showToast(context, '已改为「${catById(picked).name}」',
+          icon: Icons.category_rounded);
     }
   }
 
@@ -830,10 +959,13 @@ class _HomePageState extends State<HomePage> {
   Future<void> _editAmount(Bill b) async {
     HapticFeedback.selectionClick();
     final AppStore store = AppScope.storeOf(context);
-    final double? v = await showAmountKeypad(context, initial: b.amount, expense: b.expense);
+    final double? v =
+        await showAmountKeypad(context, initial: b.amount, expense: b.expense);
     if (v == null || v <= 0 || !mounted) return;
     store.updateBill(b.copyWith(amount: v));
-    if (mounted) showToast(context, '金额已改为 ${store.money(v)}', icon: Icons.payments_rounded);
+    if (mounted)
+      showToast(context, '金额已改为 ${store.money(v)}',
+          icon: Icons.payments_rounded);
   }
 
   Future<void> _openEdit(Bill b) async {
@@ -861,7 +993,8 @@ class _HomePageState extends State<HomePage> {
               Container(
                 width: 40,
                 height: 5,
-                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+                decoration: BoxDecoration(
+                    color: p.line, borderRadius: BorderRadius.circular(3)),
               ),
               const SizedBox(height: 18),
               Row(
@@ -874,7 +1007,10 @@ class _HomePageState extends State<HomePage> {
                       children: <Widget>[
                         Text(
                           b.note.isEmpty ? c.name : b.note,
-                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: p.ink),
+                          style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: p.ink),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -962,7 +1098,8 @@ class _HomePageState extends State<HomePage> {
             Container(
               width: 40,
               height: 5,
-              decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+              decoration: BoxDecoration(
+                  color: p.line, borderRadius: BorderRadius.circular(3)),
             ),
             const SizedBox(height: 20),
             CatBubble(cat: c, size: 62, iconSize: 28),
@@ -1001,7 +1138,9 @@ class _HomePageState extends State<HomePage> {
                 style: TextStyle(
                   fontSize: 12,
                   color: p.ink2,
-                  fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                  fontFeatures: const <FontFeature>[
+                    FontFeature.tabularFigures()
+                  ],
                 ),
               ),
             ),
@@ -1023,7 +1162,9 @@ class _HomePageState extends State<HomePage> {
                       alignment: Alignment.center,
                       child: Text('编辑',
                           style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w700, color: p.accent)),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: p.accent)),
                     ),
                   ),
                 ),
@@ -1040,7 +1181,9 @@ class _HomePageState extends State<HomePage> {
                       alignment: Alignment.center,
                       child: Text('关闭',
                           style: TextStyle(
-                              fontSize: 14, fontWeight: FontWeight.w600, color: p.ink2)),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: p.ink2)),
                     ),
                   ),
                 ),
@@ -1053,7 +1196,10 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _actionTile(Palette p,
-      {required IconData icon, required Color color, required String label, required VoidCallback onTap}) {
+      {required IconData icon,
+      required Color color,
+      required String label,
+      required VoidCallback onTap}) {
     return Pressable(
       onTap: onTap,
       child: Container(
@@ -1067,7 +1213,9 @@ class _HomePageState extends State<HomePage> {
           children: <Widget>[
             Icon(icon, size: 18, color: color),
             const SizedBox(width: 8),
-            Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: color)),
           ],
         ),
       ),
@@ -1082,15 +1230,19 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: p.card,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
         title: Text('删除这笔账单？', style: T.h2(p).copyWith(fontSize: 17)),
-        content: Text('删除后无法恢复。', style: TextStyle(fontSize: 13, color: p.ink2, height: 1.5)),
+        content: Text('删除后无法恢复。',
+            style: TextStyle(fontSize: 13, color: p.ink2, height: 1.5)),
         actions: <Widget>[
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: Text('取消', style: TextStyle(color: p.ink2, fontWeight: FontWeight.w600)),
+            child: Text('取消',
+                style: TextStyle(color: p.ink2, fontWeight: FontWeight.w600)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('删除', style: TextStyle(color: p.expense, fontWeight: FontWeight.w700)),
+            child: Text('删除',
+                style:
+                    TextStyle(color: p.expense, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -1104,7 +1256,8 @@ class _Reveal extends StatefulWidget {
   final Widget child;
   final int delay;
 
-  const _Reveal({Key? key, required this.child, this.delay = 0}) : super(key: key);
+  const _Reveal({Key? key, required this.child, this.delay = 0})
+      : super(key: key);
 
   @override
   State<_Reveal> createState() => _RevealState();
@@ -1116,7 +1269,8 @@ class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 420));
+    _c = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 300));
     Future<void>.delayed(Duration(milliseconds: widget.delay), () {
       if (mounted) _c.forward();
     });
@@ -1130,13 +1284,15 @@ class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final Animation<double> a = CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
+    final Animation<double> a =
+        CurvedAnimation(parent: _c, curve: Curves.easeOutCubic);
     return AnimatedBuilder(
       animation: a,
       builder: (BuildContext context, Widget? child) {
         return Opacity(
           opacity: a.value,
-          child: Transform.translate(offset: Offset(0, 16 * (1 - a.value)), child: child),
+          child: Transform.translate(
+              offset: Offset(0, 16 * (1 - a.value)), child: child),
         );
       },
       child: widget.child,

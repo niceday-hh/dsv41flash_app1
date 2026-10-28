@@ -16,7 +16,11 @@ import 'note_picker.dart';
 
 /// 打开记账 / 编辑账单面板。传入 [bill] 即为编辑模式。
 Future<bool?> showBillSheet(BuildContext context,
-    {Bill? bill, bool expense = true, String? catId, double? initialAmount, String? initialNote}) {
+    {Bill? bill,
+    bool expense = true,
+    String? catId,
+    double? initialAmount,
+    String? initialNote}) {
   final AppStore store = AppScope.storeOf(context);
   return showModalBottomSheet<bool>(
     context: context,
@@ -29,18 +33,23 @@ Future<bool?> showBillSheet(BuildContext context,
       curve: Curves.easeOutBack,
       reverseCurve: Curves.easeInCubic,
     ),
-    builder: (BuildContext ctx) => _BillSheet(
-      store: store,
-      bill: bill,
-      initialExpense: bill?.expense ?? expense,
-      initialCatId: bill?.catId ?? catId,
-      initialAmount: initialAmount,
-      initialNote: initialNote,
+    // 上滑动画期间面板内容不变，独立图层可以直接复用位图，
+    // 不必每帧把键盘与分类网格重绘一遍。
+    builder: (BuildContext ctx) => RepaintBoundary(
+      child: _BillSheet(
+        store: store,
+        bill: bill,
+        initialExpense: bill?.expense ?? expense,
+        initialCatId: bill?.catId ?? catId,
+        initialAmount: initialAmount,
+        initialNote: initialNote,
+      ),
     ),
   );
 }
 
-Future<bool?> showAddBillSheet(BuildContext context, {bool expense = true, String? catId}) =>
+Future<bool?> showAddBillSheet(BuildContext context,
+        {bool expense = true, String? catId}) =>
     showBillSheet(context, expense: expense, catId: catId);
 
 class _BillSheet extends StatefulWidget {
@@ -83,10 +92,14 @@ class _BillSheetState extends State<_BillSheet> {
     _expense = b?.expense ?? widget.initialExpense;
     _catId = b?.catId ?? widget.initialCatId ?? catsFor(_expense).first.id;
     _date = b?.date ?? DateTime.now();
-    _noteCtrl = TextEditingController(text: b?.note ?? widget.initialNote ?? '');
-    if (b == null && widget.initialAmount != null && widget.initialAmount! > 0) {
+    _noteCtrl =
+        TextEditingController(text: b?.note ?? widget.initialNote ?? '');
+    if (b == null &&
+        widget.initialAmount != null &&
+        widget.initialAmount! > 0) {
       final double v = widget.initialAmount!;
-      _expr = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+      _expr =
+          v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
       _evaluated = true;
     }
     if (b != null) {
@@ -145,7 +158,9 @@ class _BillSheetState extends State<_BillSheet> {
       }
       if (k == '=') {
         final double v = _value;
-        _expr = v == v.roundToDouble() ? v.toStringAsFixed(0) : v.toStringAsFixed(2);
+        _expr = v == v.roundToDouble()
+            ? v.toStringAsFixed(0)
+            : v.toStringAsFixed(2);
         _evaluated = true;
         return;
       }
@@ -166,7 +181,9 @@ class _BillSheetState extends State<_BillSheet> {
       if (k == '.') {
         final String tail = _expr.split(RegExp(r'[+-]')).last;
         if (tail.contains('.')) return;
-        _expr = _expr.isEmpty || _isOp(_expr[_expr.length - 1]) ? '${_expr}0.' : '$_expr.';
+        _expr = _expr.isEmpty || _isOp(_expr[_expr.length - 1])
+            ? '${_expr}0.'
+            : '$_expr.';
         return;
       }
       final String tail = _expr.split(RegExp(r'[+-]')).last;
@@ -217,7 +234,9 @@ class _BillSheetState extends State<_BillSheet> {
               width: 38,
               height: 38,
               decoration: BoxDecoration(
-                color: soft ? p.cardSoft : (on ? tone : tone.withOpacity(p.dark ? 0.20 : 0.14)),
+                color: soft
+                    ? p.cardSoft
+                    : (on ? tone : tone.withOpacity(p.dark ? 0.20 : 0.14)),
                 borderRadius: BorderRadius.circular(11),
                 boxShadow: on
                     ? <BoxShadow>[
@@ -229,7 +248,8 @@ class _BillSheetState extends State<_BillSheet> {
                       ]
                     : null,
               ),
-              child: Icon(icon, size: 18, color: soft ? p.ink2 : (on ? Colors.white : tone)),
+              child: Icon(icon,
+                  size: 18, color: soft ? p.ink2 : (on ? Colors.white : tone)),
             ),
           ),
           const SizedBox(height: 5),
@@ -257,7 +277,8 @@ class _BillSheetState extends State<_BillSheet> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (BuildContext ctx) => Container(
-        constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.72),
+        constraints:
+            BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.72),
         padding: const EdgeInsets.fromLTRB(20, 14, 20, 26),
         decoration: BoxDecoration(
           color: p.card,
@@ -271,7 +292,8 @@ class _BillSheetState extends State<_BillSheet> {
               child: Container(
                 width: 40,
                 height: 5,
-                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+                decoration: BoxDecoration(
+                    color: p.line, borderRadius: BorderRadius.circular(3)),
               ),
             ),
             const SizedBox(height: 16),
@@ -279,7 +301,8 @@ class _BillSheetState extends State<_BillSheet> {
               children: <Widget>[
                 Text('全部分类', style: T.h2(p).copyWith(fontSize: 17)),
                 const SizedBox(width: 8),
-                Text('${cats.length} 个', style: TextStyle(fontSize: 11, color: p.ink3)),
+                Text('${cats.length} 个',
+                    style: TextStyle(fontSize: 11, color: p.ink3)),
               ],
             ),
             const SizedBox(height: 14),
@@ -307,7 +330,9 @@ class _BillSheetState extends State<_BillSheet> {
                           width: 44,
                           height: 44,
                           decoration: BoxDecoration(
-                            color: on ? c.color.withOpacity(0.16) : c.color.withOpacity(0.10),
+                            color: on
+                                ? c.color.withOpacity(0.16)
+                                : c.color.withOpacity(0.10),
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: on ? c.color : Colors.transparent,
@@ -426,7 +451,8 @@ class _BillSheetState extends State<_BillSheet> {
     final bool hasOp = _expr.contains('+') || _expr.contains('-');
 
     return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      padding:
+          EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Container(
         constraints: BoxConstraints(maxHeight: maxH),
         decoration: BoxDecoration(
@@ -441,7 +467,8 @@ class _BillSheetState extends State<_BillSheet> {
               child: Container(
                 width: 40,
                 height: 5,
-                decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+                decoration: BoxDecoration(
+                    color: p.line, borderRadius: BorderRadius.circular(3)),
               ),
             ),
             Flexible(
@@ -465,7 +492,8 @@ class _BillSheetState extends State<_BillSheet> {
                                 color: p.expense.withOpacity(0.10),
                                 borderRadius: BorderRadius.circular(15),
                               ),
-                              child: Icon(Icons.delete_outline_rounded, size: 16, color: p.expense),
+                              child: Icon(Icons.delete_outline_rounded,
+                                  size: 16, color: p.expense),
                             ),
                           ),
                         Segmented(
@@ -489,7 +517,8 @@ class _BillSheetState extends State<_BillSheet> {
                               color: p.cardSoft,
                               borderRadius: BorderRadius.circular(15),
                             ),
-                            child: Icon(Icons.close_rounded, size: 16, color: p.ink2),
+                            child: Icon(Icons.close_rounded,
+                                size: 16, color: p.ink2),
                           ),
                         ),
                       ],
@@ -515,7 +544,9 @@ class _BillSheetState extends State<_BillSheet> {
                         Expanded(
                           child: AnimatedSwitcher(
                             duration: const Duration(milliseconds: 150),
-                            layoutBuilder: (Widget? current, List<Widget> previous) => Stack(
+                            layoutBuilder:
+                                (Widget? current, List<Widget> previous) =>
+                                    Stack(
                               alignment: Alignment.centerLeft,
                               children: <Widget>[
                                 ...previous,
@@ -528,12 +559,16 @@ class _BillSheetState extends State<_BillSheet> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: _expr.isEmpty ? 24 : (_expr.length > 9 ? 32 : 40),
+                                fontSize: _expr.isEmpty
+                                    ? 24
+                                    : (_expr.length > 9 ? 32 : 40),
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -1.6,
                                 height: 1.1,
                                 color: _expr.isEmpty ? p.ink3 : p.ink,
-                                fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                                fontFeatures: const <FontFeature>[
+                                  FontFeature.tabularFigures()
+                                ],
                               ),
                             ),
                           ),
@@ -545,7 +580,8 @@ class _BillSheetState extends State<_BillSheet> {
                                   icon: Icons.mic_off_rounded);
                               return;
                             }
-                            final VoiceIntent? intent = await showVoiceSheet(context);
+                            final VoiceIntent? intent =
+                                await showVoiceSheet(context);
                             if (intent == null || !mounted) return;
                             setState(() {
                               _expense = intent.expense;
@@ -557,8 +593,8 @@ class _BillSheetState extends State<_BillSheet> {
                               _evaluated = true;
                               _date = intent.date;
                               _noteCtrl.text = intent.note;
-                              _noteCtrl.selection =
-                                  TextSelection.collapsed(offset: intent.note.length);
+                              _noteCtrl.selection = TextSelection.collapsed(
+                                  offset: intent.note.length);
                             });
                           },
                           child: Container(
@@ -570,21 +606,26 @@ class _BillSheetState extends State<_BillSheet> {
                               borderRadius: BorderRadius.circular(13),
                               boxShadow: p.accentGlow,
                             ),
-                            child: const Icon(Icons.mic_rounded, color: Colors.white, size: 19),
+                            child: const Icon(Icons.mic_rounded,
+                                color: Colors.white, size: 19),
                           ),
                         ),
                         if (hasOp)
                           Padding(
                             padding: const EdgeInsets.only(bottom: 8, left: 6),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
                                 color: p.accent.withOpacity(0.10),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
                                 '= ${fmtMoney(_value)}',
-                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.accent),
+                                style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: p.accent),
                               ),
                             ),
                           ),
@@ -598,32 +639,41 @@ class _BillSheetState extends State<_BillSheet> {
                             onTap: _openNotePicker,
                             behavior: HitTestBehavior.opaque,
                             child: Container(
-                            height: 40,
-                            padding: const EdgeInsets.symmetric(horizontal: 14),
-                            decoration: BoxDecoration(
-                              color: p.cardSoft,
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: Center(
-                              child: IgnorePointer(
-                                child: TextField(
-                                controller: _noteCtrl,
-                                readOnly: true,
-                                style: TextStyle(fontSize: 13, color: p.ink, fontWeight: FontWeight.w500),
-                                cursorColor: p.accent,
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  border: InputBorder.none,
-                                  hintText: '写点备注…',
-                                  hintStyle: TextStyle(fontSize: 13, color: p.ink3),
-                                  suffixIcon: Icon(Icons.auto_awesome_rounded, size: 14, color: p.ink3),
-                                  suffixIconConstraints:
-                                      const BoxConstraints(minWidth: 20, minHeight: 20),
+                              height: 40,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 14),
+                              decoration: BoxDecoration(
+                                color: p.cardSoft,
+                                borderRadius: BorderRadius.circular(13),
+                              ),
+                              child: Center(
+                                child: IgnorePointer(
+                                  child: TextField(
+                                    controller: _noteCtrl,
+                                    readOnly: true,
+                                    style: TextStyle(
+                                        fontSize: 13,
+                                        color: p.ink,
+                                        fontWeight: FontWeight.w500),
+                                    cursorColor: p.accent,
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      border: InputBorder.none,
+                                      hintText: '写点备注…',
+                                      hintStyle: TextStyle(
+                                          fontSize: 13, color: p.ink3),
+                                      suffixIcon: Icon(
+                                          Icons.auto_awesome_rounded,
+                                          size: 14,
+                                          color: p.ink3),
+                                      suffixIconConstraints:
+                                          const BoxConstraints(
+                                              minWidth: 20, minHeight: 20),
+                                    ),
+                                  ),
                                 ),
                               ),
-                              ),
                             ),
-                          ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -638,11 +688,15 @@ class _BillSheetState extends State<_BillSheet> {
                             ),
                             child: Row(
                               children: <Widget>[
-                                Icon(Icons.calendar_today_rounded, size: 13, color: p.ink2),
+                                Icon(Icons.calendar_today_rounded,
+                                    size: 13, color: p.ink2),
                                 const SizedBox(width: 6),
                                 Text(
                                   dayLabel(_date),
-                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: p.ink2),
+                                  style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: p.ink2),
                                 ),
                               ],
                             ),
@@ -656,7 +710,8 @@ class _BillSheetState extends State<_BillSheet> {
                       child: GridView.builder(
                         physics: const NeverScrollableScrollPhysics(),
                         padding: EdgeInsets.zero,
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 5,
                           mainAxisSpacing: 8,
                           crossAxisSpacing: 4,
@@ -699,8 +754,10 @@ class _BillSheetState extends State<_BillSheet> {
             Container(
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
               decoration: BoxDecoration(
-                color: p.dark ? const Color(0xFF12141E) : const Color(0xFFF7F7FB),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                color:
+                    p.dark ? const Color(0xFF12141E) : const Color(0xFFF7F7FB),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
               ),
               child: SafeArea(
                 top: false,
@@ -725,7 +782,8 @@ class _BillSheetState extends State<_BillSheet> {
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
                               )
                             : Text(
                                 _value <= 0
@@ -755,23 +813,35 @@ class _BillSheetState extends State<_BillSheet> {
       padding: const EdgeInsets.only(bottom: 7),
       child: Row(
         children: keys.map((String k) {
-          final bool fn = k == 'del' || k == 'C' || k == '=' || k == '+' || k == '-';
+          final bool fn =
+              k == 'del' || k == 'C' || k == '=' || k == '+' || k == '-';
           final bool accent = k == '=' || k == '+';
           return Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 3),
               child: Pressable(
                 onTap: () => _press(k),
-                scale: 0.97,
-                child: Container(
+                scale: 0.91,
+                holdMs: 90,
+                builder: (bool down) => Container(
                   height: 46,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: accent
-                        ? p.accent.withOpacity(0.10)
+                        ? p.accent.withOpacity(down ? 0.22 : 0.10)
                         : (fn
-                            ? Colors.transparent
-                            : (p.dark ? Colors.white.withOpacity(0.055) : const Color(0xFFEFF0F5))),
+                            ? (down
+                                ? (p.dark
+                                    ? Colors.white.withOpacity(0.07)
+                                    : const Color(0xFFE9EBF3))
+                                : Colors.transparent)
+                            : (down
+                                ? (p.dark
+                                    ? Colors.white.withOpacity(0.13)
+                                    : const Color(0xFFDFE2ED))
+                                : (p.dark
+                                    ? Colors.white.withOpacity(0.055)
+                                    : const Color(0xFFEFF0F5)))),
                     borderRadius: BorderRadius.circular(R.m),
                   ),
                   child: k == 'del'
@@ -803,15 +873,18 @@ Future<bool> _confirmDelete(BuildContext context) async {
       backgroundColor: p.card,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       title: Text('删除这笔账单？', style: T.h2(p).copyWith(fontSize: 17)),
-      content: Text('删除后无法恢复。', style: TextStyle(fontSize: 13, color: p.ink2, height: 1.5)),
+      content: Text('删除后无法恢复。',
+          style: TextStyle(fontSize: 13, color: p.ink2, height: 1.5)),
       actions: <Widget>[
         TextButton(
           onPressed: () => Navigator.pop(ctx, false),
-          child: Text('取消', style: TextStyle(color: p.ink2, fontWeight: FontWeight.w600)),
+          child: Text('取消',
+              style: TextStyle(color: p.ink2, fontWeight: FontWeight.w600)),
         ),
         TextButton(
           onPressed: () => Navigator.pop(ctx, true),
-          child: Text('删除', style: TextStyle(color: p.expense, fontWeight: FontWeight.w700)),
+          child: Text('删除',
+              style: TextStyle(color: p.expense, fontWeight: FontWeight.w700)),
         ),
       ],
     ),

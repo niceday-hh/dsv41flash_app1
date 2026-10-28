@@ -14,12 +14,14 @@ Future<double?> showAmountKeypad(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (BuildContext ctx) => _AmountKeypad(initial: initial, expense: expense),
+    builder: (BuildContext ctx) =>
+        _AmountKeypad(initial: initial, expense: expense),
   );
 }
 
 class _AmountKeypad extends StatefulWidget {
-  const _AmountKeypad({Key? key, required this.initial, required this.expense}) : super(key: key);
+  const _AmountKeypad({Key? key, required this.initial, required this.expense})
+      : super(key: key);
 
   final double initial;
   final bool expense;
@@ -99,7 +101,8 @@ class _AmountKeypadState extends State<_AmountKeypad> {
             Container(
               width: 40,
               height: 5,
-              decoration: BoxDecoration(color: p.line, borderRadius: BorderRadius.circular(3)),
+              decoration: BoxDecoration(
+                  color: p.line, borderRadius: BorderRadius.circular(3)),
             ),
             const SizedBox(height: 16),
             Row(
@@ -108,7 +111,10 @@ class _AmountKeypadState extends State<_AmountKeypad> {
                 const Spacer(),
                 Text(
                   widget.expense ? '支出' : '收入',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: accent),
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: accent),
                 ),
               ],
             ),
@@ -126,7 +132,10 @@ class _AmountKeypadState extends State<_AmountKeypad> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 3),
                     child: Text('¥',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: p.ink2)),
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: p.ink2)),
                   ),
                   const SizedBox(width: 5),
                   Expanded(
@@ -139,7 +148,9 @@ class _AmountKeypadState extends State<_AmountKeypad> {
                         fontWeight: FontWeight.w700,
                         color: accent,
                         letterSpacing: -0.8,
-                        fontFeatures: const <FontFeature>[FontFeature.tabularFigures()],
+                        fontFeatures: const <FontFeature>[
+                          FontFeature.tabularFigures()
+                        ],
                       ),
                     ),
                   ),
@@ -162,16 +173,22 @@ class _AmountKeypadState extends State<_AmountKeypad> {
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: Pressable(
                           onTap: () => _press(k),
-                          scale: 0.94,
-                          child: Container(
+                          scale: 0.91,
+                          holdMs: 90,
+                          builder: (bool down) => Container(
                             height: 52,
                             decoration: BoxDecoration(
-                              color: p.cardSoft,
+                              color: down
+                                  ? (p.dark
+                                      ? Colors.white.withOpacity(0.13)
+                                      : const Color(0xFFE2E5EF))
+                                  : p.cardSoft,
                               borderRadius: BorderRadius.circular(14),
                             ),
                             alignment: Alignment.center,
                             child: k == '⌫'
-                                ? Icon(Icons.backspace_outlined, size: 19, color: p.ink2)
+                                ? Icon(Icons.backspace_outlined,
+                                    size: 19, color: p.ink2)
                                 : Text(
                                     k,
                                     style: TextStyle(
