@@ -24,7 +24,7 @@ void main() {
   });
   for (final dark in [false, true]) {
     testWidgets('1.5.7 UI parity ${dark ? 'dark' : 'light'}', (tester) async {
-      tester.view.physicalSize = const Size(390, 844); tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(420, 900); tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
       final store = AppStore(); final p = Palette.of(dark, 0);
       final pcm = StreamController<Uint8List>.broadcast(sync: true);

@@ -19,7 +19,7 @@ void main() {
     await loader.load();
   });
   testWidgets('home voice keeps date through fill and saves only on confirmation', (tester) async {
-    tester.view.physicalSize = const Size(390, 844); tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(420, 900); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
     SharedPreferences.setMockInitialValues({});
     String? persisted;
