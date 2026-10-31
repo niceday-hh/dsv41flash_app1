@@ -781,7 +781,10 @@ class _VoiceSheetState extends State<_VoiceSheet>
     setState(() {
       _edited.add('type');
       _edited.remove('category');
-      _intent = next.copyWith(amount: intent.amount, date: intent.date, note: intent.note);
+      _intent = next.copyWith(
+        amount: _edited.contains('amount') ? intent.amount : null,
+        date: _edited.contains('date') ? intent.date : null,
+        note: _edited.contains('note') ? intent.note : null);
     });
   }
 }

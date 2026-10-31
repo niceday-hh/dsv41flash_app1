@@ -40,6 +40,19 @@ void main() {
     for (var i=0; i<20 && find.text('重说').evaluate().isEmpty; i++) { await tester.pump(const Duration(milliseconds:50)); }
     debugPrint('Voice state: ${tester.widgetList<Text>(find.byType(Text)).map((t)=>t.data).whereType<String>().join(' | ')}');
     expect(find.text('10月1日'), findsOneWidget); expect(store.bills, isEmpty);
+    Future<void> finishReparse() async {
+      await tester.pump(const Duration(milliseconds:450));
+      await tester.runAsync(() async { await Future<void>.delayed(const Duration(milliseconds:20)); });
+      await tester.pump();
+    }
+    await tester.enterText(find.byType(TextField).first, '二月31号买纸巾16元'); await finishReparse();
+    expect(find.text('日期不明确，请核对'),findsOneWidget);
+    await tester.tap(find.text('收入')); await finishReparse();
+    expect(find.text('日期不明确，请核对'),findsOneWidget);
+    await tester.tap(find.text('支出')); await finishReparse();
+    expect(find.text('日期不明确，请核对'),findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, '10月1号买纸巾16元'); await finishReparse();
+    expect(find.text('10月1日'),findsOneWidget);
     await tester.tap(find.text('填入账单')); await tester.pumpAndSettle();
     expect(find.text('记一笔'), findsOneWidget); expect(store.bills, isEmpty);
     await tester.tap(find.textContaining('保存 ·')); await tester.pumpAndSettle();
