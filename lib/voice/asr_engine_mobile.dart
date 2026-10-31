@@ -95,6 +95,7 @@ class AsrEngine {
     } finally { started.complete(); }
   }
   static Future<void> cancelCapture({bool refreshModel = true}) {
+    final needsStop = _capturing || _sub != null;
     if (_decoding && _worker != null) {
       _generation++; _worker?.close(); _worker = null; _preparing = null; _ready = false;
       if (refreshModel && !_pressure && !_background && !_disposed && _enabled) unawaited(warmUp());
@@ -106,7 +107,7 @@ class AsrEngine {
     _captureGeneration++; _capturing = false; _level = 0;
     final sub = _sub; _sub = null; _pcm.clear();
     // Stop immediately, including any outstanding native permission request.
-    final stop = _stopMic();
+    final stop = needsStop ? _stopMic() : Future<void>.value();
     return Future.wait<void>([if (sub != null) sub.cancel(), stop]).then((_) {});
   }
   static Future<String> stopAndRecognize() async {

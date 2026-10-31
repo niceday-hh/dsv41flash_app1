@@ -44,7 +44,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
   double _level = 0;
   VoiceIntent? _intent;
   final Set<String> _edited = <String>{};
-  bool _holding = false;
+  bool _holding = false, _microphoneReady = false;
   int _generation = 0, _parseGeneration = 0;
   Future<bool>? _starting;
 
@@ -122,7 +122,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
   Future<void> _startHold() async {
     if (_stage == _Stage.recognizing || _holding) return;
     HapticFeedback.mediumImpact();
-    _holding = true;
+    _holding = true; _microphoneReady = false;
     final generation = ++_generation;
     _parseGeneration++; _reparseDebounce?.cancel();
     setState(() {
@@ -144,6 +144,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
     });
     final bool ok = await (_starting = asr.AsrEngine.startCapture());
     if (!mounted || generation != _generation) return;
+    _microphoneReady = ok;
     if (!ok && mounted) {
       _ticker?.cancel();
       _ticker = null;
@@ -162,6 +163,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
 
   Future<void> _endHold() async {
     if (!_holding) return;
+    if (!_microphoneReady) { await _cancelHold(); return; }
     _holding = false;
     final generation = _generation;
     _ticker?.cancel();
