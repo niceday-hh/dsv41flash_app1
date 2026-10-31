@@ -26,8 +26,10 @@ void main() {
     tester.widget<EntryLauncher>(find.byType(EntryLauncher)).onVoice();
     await tester.pump(const Duration(milliseconds: 500)); await tester.pump();
     final g = await tester.startGesture(tester.getCenter(find.text('按住 说话')));
-    await tester.pump(); pcm.add(speech()); await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(); await tester.pump(const Duration(milliseconds: 20)); pcm.add(speech()); await tester.pump(const Duration(milliseconds: 500));
     await g.up(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200)); await tester.pump();
+    for (var i=0; i<20 && find.text('重说').evaluate().isEmpty; i++) { await tester.pump(const Duration(milliseconds:50)); }
+    debugPrint('Voice state: ${tester.widgetList<Text>(find.byType(Text)).map((t)=>t.data).whereType<String>().join(' | ')}');
     expect(find.text('10月1日'), findsOneWidget); expect(store.bills, isEmpty);
     await tester.tap(find.text('填入账单')); await tester.pumpAndSettle();
     expect(find.text('记一笔'), findsOneWidget); expect(store.bills, isEmpty);
