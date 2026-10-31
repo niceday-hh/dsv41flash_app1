@@ -176,9 +176,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
       _level = 0;
     });
     try {
-      assert(() { debugPrint('Voice trace: stopping'); return true; }());
       final String text = await asr.AsrEngine.stopAndRecognize();
-      assert(() { debugPrint('Voice trace: text returned'); return true; }());
       if (!mounted || generation != _generation) return;
       if (text.trim().isEmpty) {
         setState(() {
@@ -191,9 +189,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
       _textCtrl.text = text;
       _textCtrl.selection = TextSelection.collapsed(offset: text.length);
       final history = await _history();
-      assert(() { debugPrint('Voice trace: history ready ${history.length}'); return true; }());
       final VoiceIntent parsed = await parseVoiceAsync(text, history: history);
-      assert(() { debugPrint('Voice trace: parsed'); return true; }());
       if (!mounted || generation != _generation) return;
       setState(() {
         _intent = parsed;

@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:whale_ledger/app_shell.dart';
 import 'package:whale_ledger/store.dart';
 import 'package:whale_ledger/theme.dart';
@@ -11,10 +14,16 @@ import 'package:whale_ledger/voice/asr_engine_mobile.dart';
 import 'voice_completion_test.dart' show FakeWorker, speech;
 
 void main() {
+  setUpAll(() async {
+    final loader = FontLoader('WenKai')..addFont(rootBundle.load('assets/fonts/LXGWWenKai-subset.ttf'));
+    await loader.load();
+  });
   testWidgets('home voice keeps date through fill and saves only on confirmation', (tester) async {
     tester.view.physicalSize = const Size(390, 844); tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
-    final store = AppStore(); final p = Palette.of(false, 0);
+    SharedPreferences.setMockInitialValues({});
+    String? persisted;
+    final store = AppStore(persist: (data) async { persisted = data; }); final p = Palette.of(false, 0);
     final pcm = StreamController<Uint8List>.broadcast(sync: true);
     await AsrEngine.configureForTest(worker: () => FakeWorker()..text = '10月1号买纸巾16元',
       start: () async => true, stop: () async {}, stream: () => pcm.stream);
@@ -38,7 +47,10 @@ void main() {
     final b = store.bills.single;
     expect([b.date.month,b.date.day], [10,1]); expect(b.amount,16); expect(b.catId,'daily'); expect(b.note,'纸巾');
     await tester.pumpWidget(const SizedBox.shrink()); await tester.pump();
-    await tester.runAsync(store.flushPersistence);
+    await store.flushPersistence();
+    final saved = (jsonDecode(persisted!) as Map<String,dynamic>)['bills'] as List;
+    expect(saved.length,1);
+    expect(DateTime.fromMillisecondsSinceEpoch(saved.single['t'] as int).day,1);
     await AsrEngine.dispose(); await pcm.close(); store.dispose();
     expect(tester.takeException(), isNull);
   });

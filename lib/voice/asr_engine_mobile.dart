@@ -113,9 +113,12 @@ class AsrEngine {
   static Future<String> stopAndRecognize() async {
     final generation = _captureGeneration;
     await _micTransition;
+    if (_disposed || _background || generation != _captureGeneration) return '';
     _capturing = false; _level = 0;
     await _stopMic();
+    if (_disposed || _background || generation != _captureGeneration) return '';
     await _sub?.cancel(); _sub = null;
+    if (_disposed || _background || generation != _captureGeneration) return '';
     final bytes = _pcm.takeBytes();
     if (_disposed || _background || generation != _captureGeneration) return '';
     if (bytes.length < 11200) throw StateError('录音太短，请完整说一句');

@@ -20,6 +20,8 @@ Map<String, dynamic> _decodeLedger(String raw) => jsonDecode(raw) as Map<String,
 const int _isolateThreshold = 200;
 
 class AppStore extends ChangeNotifier {
+  AppStore({Future<void> Function(String)? persist}) : _writeLedger = persist ?? writeLedger;
+  final Future<void> Function(String) _writeLedger;
   static const String _legacyKey = 'whale_ledger_v1';
 
   final List<Bill> _bills = <Bill>[];
@@ -190,7 +192,7 @@ class AppStore extends ChangeNotifier {
         final String payload = _bills.length >= _isolateThreshold
             ? await compute(_encodeLedger, snap, debugLabel: 'encode-ledger')
             : _encodeLedger(snap);
-        await writeLedger(payload);
+        await _writeLedger(payload);
         if (_bills.isNotEmpty) _clearLegacy();
       } catch (_) {
         // 落盘失败不影响内存账本

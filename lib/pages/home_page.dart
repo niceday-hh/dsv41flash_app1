@@ -654,6 +654,10 @@ class _HomePageState extends State<HomePage> {
             borderRadius: isFirst
                 ? BorderRadius.vertical(top: Radius.circular(R.xl))
                 : BorderRadius.zero,
+          ),
+          // Keep the existing top/bottom rules separate from the rounded fill.
+          // A non-uniform Border with a radius asserts in Flutter debug mode.
+          foregroundDecoration: BoxDecoration(
             border: Border(
               top: BorderSide(
                   color: isFirst ? Colors.transparent : p.line, width: 1),
@@ -1299,3 +1303,4 @@ class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
     );
   }
 }
+
