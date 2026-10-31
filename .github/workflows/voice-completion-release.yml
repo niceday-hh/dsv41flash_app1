@@ -82,11 +82,19 @@ jobs:
           PYBASE
           mkdir -p "$BASE/assets/asr"
           cp assets/asr/MODEL_LICENSE.txt "$BASE/assets/asr/"
-          (cd "$BASE" && flutter pub get && timeout --kill-after=10s 120s flutter test --timeout 45s --reporter expanded --update-goldens test/ui_regression_test.dart)
+          (cd "$BASE" && flutter pub get)
+          # The audio service is a process singleton: isolate each theme's fake
+          # widget clock just as functional tests isolate service lifecycle.
+          for theme in light dark; do
+            (cd "$BASE" && timeout --kill-after=10s 120s flutter test --timeout 45s --reporter expanded --plain-name "1.5.7 UI parity $theme" --update-goldens test/ui_regression_test.dart)
+          done
           mkdir -p test/goldens
           cp "$BASE/test/goldens/"*.png test/goldens/
       - name: Visual regression against released UI
-        run: timeout --kill-after=10s 120s flutter test --timeout 45s --reporter expanded test/ui_regression_test.dart
+        run: |
+          for theme in light dark; do
+            timeout --kill-after=10s 120s flutter test --timeout 45s --reporter expanded --plain-name "1.5.7 UI parity $theme" test/ui_regression_test.dart
+          done
       - name: Real Paraformer inference
         run: |
           set -euo pipefail
