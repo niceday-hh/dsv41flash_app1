@@ -126,8 +126,8 @@ void main() {
     await expectLater(AsrEngine.stopAndRecognize(), throwsStateError);
     expect(workers.single.decodes, 0);
   });
-  testWidgets('background grace is bounded, settings react immediately, pressure releases', (tester) async {
-    await tester.runAsync(() async { await configure(); }); var clock = now;
+  test('background grace is bounded, settings react immediately, pressure releases', () async {
+    await configure(); var clock = now;
     await AsrEngine.configureForTest(worker: () { final w = FakeWorker(); workers.add(w); return w; },
       clock: () => clock, start: () async => true, stop: () async {}, stream: () => pcm.stream);
     await AsrEngine.warmUp(); final old = workers.single;
@@ -136,7 +136,7 @@ void main() {
     expect(workers.length, 1); expect(old.closed, isFalse);
     AsrEngine.onAppPaused(); clock = clock.add(const Duration(seconds: 20));
     AsrEngine.onAppResumed(); await AsrEngine.warmUp(); expect(old.closed, isTrue); expect(workers.length, 2);
-    AsrEngine.onAppPaused(); AsrEngine.keepInBackground = false; await tester.pump();
+    AsrEngine.onAppPaused(); AsrEngine.keepInBackground = false; await tick();
     expect(workers.last.closed, isTrue);
     AsrEngine.onAppResumed(); await AsrEngine.warmUp(); AsrEngine.onMemoryPressure();
     expect(workers.last.closed, isTrue);
