@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 
 import '../data.dart';
 import '../models.dart';
-import '../store.dart';
 import '../theme.dart';
 import '../ui/common.dart';
 import 'asr_engine.dart' as asr;
@@ -157,8 +156,8 @@ class _VoiceSheetState extends State<_VoiceSheet>
   }
 
   /// 把用户的历史备注喂给解析器，用于按自己的说法推荐分类
-  List<NoteHint> _history() {
-    return voiceHistory(AppScope.storeOf(context).bills);
+  Future<List<NoteHint>> _history() {
+    return AppScope.storeOf(context).loadVoiceHistory();
   }
 
   Future<void> _endHold() async {
@@ -187,7 +186,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
       }
       _textCtrl.text = text;
       _textCtrl.selection = TextSelection.collapsed(offset: text.length);
-      final VoiceIntent parsed = await parseVoiceAsync(text, history: _history());
+      final VoiceIntent parsed = await parseVoiceAsync(text, history: await _history());
       if (!mounted || generation != _generation) return;
       setState(() {
         _intent = parsed;
@@ -230,7 +229,7 @@ class _VoiceSheetState extends State<_VoiceSheet>
       if (!mounted || _stage != _Stage.review) return;
       final VoiceIntent? prev = _intent;
       if (prev == null) return;
-      final VoiceIntent next = await parseVoiceAsync(_textCtrl.text, history: _history(),
+      final VoiceIntent next = await parseVoiceAsync(_textCtrl.text, history: await _history(),
         expenseOverride: _edited.contains('type') ? prev.expense : null,
         noteOverride: _edited.contains('note') ? prev.note : null);
       if (!mounted || generation != _parseGeneration || _stage != _Stage.review) return;
@@ -769,12 +768,13 @@ class _VoiceSheetState extends State<_VoiceSheet>
     });
   }
 
-  void _toggleExpense(bool expense) {
+  Future<void> _toggleExpense(bool expense) async {
     final VoiceIntent? intent = _intent;
     if (intent == null || intent.expense == expense) return;
     HapticFeedback.selectionClick();
-    final next = parseVoice(_textCtrl.text, history: _history(), expenseOverride: expense,
+    final next = await parseVoiceAsync(_textCtrl.text, history: await _history(), expenseOverride: expense,
       noteOverride: _edited.contains('note') ? intent.note : null);
+    if (!mounted || _stage != _Stage.review || !identical(_intent, intent)) return;
     setState(() {
       _edited.add('type');
       _edited.remove('category');

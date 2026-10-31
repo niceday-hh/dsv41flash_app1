@@ -3,7 +3,6 @@ import '../data.dart';
 import 'note_history.dart';
 import 'parser_core.dart' as core;
 export 'note_history.dart' show NoteHint, voiceHistory;
-import '../models.dart';
 
 /// 语音记账解析结果
 class VoiceIntent {

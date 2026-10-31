@@ -97,7 +97,11 @@ class AsrEngine {
   static Future<void> cancelCapture({bool refreshModel = true}) {
     if (_decoding && _worker != null) {
       _generation++; _worker?.close(); _worker = null; _preparing = null; _ready = false;
-      if (refreshModel && !_background && !_disposed && _enabled) unawaited(warmUp());
+      if (refreshModel && !_pressure && !_background && !_disposed && _enabled) unawaited(warmUp());
+    }
+    _decoding = false;
+    if (_pressure) {
+      _generation++; _worker?.close(); _worker = null; _preparing = null; _ready = false; _pressure = false;
     }
     _captureGeneration++; _capturing = false; _level = 0;
     final sub = _sub; _sub = null; _pcm.clear();
@@ -125,8 +129,10 @@ class AsrEngine {
       final text = await _worker!.recognize(samples);
       return _background || _disposed || generation != _captureGeneration ? '' : text;
     } finally {
-      _decoding = false;
-      if (_pressure) unawaited(release());
+      if (generation == _captureGeneration) {
+        _decoding = false;
+        if (_pressure) unawaited(release());
+      }
     }
   }
   static void _scheduleRelease() {

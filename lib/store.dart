@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'data.dart';
 import 'models.dart';
+import 'voice/note_history.dart';
 import 'platform/reminder.dart';
 import 'persist/file_store.dart';
 
@@ -54,6 +55,11 @@ class AppStore extends ChangeNotifier {
   int noteLimit = 8;
   String userName = '鲸鱼同学';
 
+  Future<List<NoteHint>>? _voiceHistory;
+  Future<List<NoteHint>> loadVoiceHistory() => _voiceHistory ??= _bills.length >= 200
+      ? compute(voiceHistory, List<Bill>.of(_bills), debugLabel: 'voice-history')
+      : Future.value(voiceHistory(_bills));
+
   List<Bill> get bills => List<Bill>.unmodifiable(_bills);
   Map<String, double> get budgets => Map<String, double>.unmodifiable(_budgets);
 
@@ -92,6 +98,7 @@ class AppStore extends ChangeNotifier {
     }
     _restoring = false;
     _touchedPrefs.clear();
+    _voiceHistory = null;
     _sort();
     loaded = true;
     notifyListeners();
@@ -199,6 +206,7 @@ class AppStore extends ChangeNotifier {
   }
 
   void _touch(String pref) {
+    if (pref == 'bills') _voiceHistory = null;
     if (_restoring) _touchedPrefs.add(pref);
     _editGeneration++;
   }
@@ -653,3 +661,4 @@ class NoteCloudItem {
   final int count;
   final String catId;
 }
+
