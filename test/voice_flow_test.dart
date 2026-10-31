@@ -24,7 +24,7 @@ void main() {
     await tester.pumpAndSettle();
     // This invokes the real home callback, not a parallel test-only save route.
     tester.widget<EntryLauncher>(find.byType(EntryLauncher)).onVoice();
-    await tester.pump(const Duration(milliseconds: 500)); await tester.pump();
+    await tester.pump(); await tester.pump(const Duration(milliseconds: 500)); await tester.pump();
     final g = await tester.startGesture(tester.getCenter(find.text('按住 说话')));
     await tester.pump(); await tester.pump(const Duration(milliseconds: 20)); pcm.add(speech()); await tester.pump(const Duration(milliseconds: 500));
     await g.up(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200)); await tester.pump();

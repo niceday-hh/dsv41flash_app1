@@ -45,7 +45,7 @@ void main() {
       await expectLater(root, matchesGoldenFile('goldens/manual_$label.png'));
       debugPrint('UI baseline: manual captured');
       Navigator.of(context).pop(); await tester.pumpAndSettle();
-      unawaited(showVoiceSheet(context)); await tester.pump(const Duration(milliseconds: 500));
+      unawaited(showVoiceSheet(context)); await tester.pump(); await tester.pump(const Duration(milliseconds: 500));
       await tester.pump();
       await expectLater(root, matchesGoldenFile('goldens/voice_$label.png'));
       expect(find.text('按住 说话'), findsOneWidget);
