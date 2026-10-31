@@ -6,6 +6,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: release-v1.5.8-validation
   cancel-in-progress: true
@@ -23,6 +24,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Retire superseded release jobs
+        run: |
+          gh run list --branch release/v1.5.8 --limit 20 --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' | while read -r id; do
+            if [ "$id" != "$GITHUB_RUN_ID" ]; then gh run cancel "$id" --force || true; fi
+          done
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -114,6 +120,7 @@ jobs:
       - name: Publish and verify downloaded bytes
         run: |
           set -euo pipefail
+          test "$(git ls-remote origin refs/heads/release/v1.5.8 | cut -f1)" = "$GITHUB_SHA"
           NAME=whale-ledger-v1.5.8-arm64.apk
           cp build/app/outputs/flutter-apk/app-release.apk "$NAME"
           sha256sum "$NAME" > "$NAME.sha256"
