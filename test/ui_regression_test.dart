@@ -35,9 +35,11 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
       final store = AppStore(); final p = Palette.of(dark, 0);
       final pcm = StreamController<Uint8List>.broadcast(sync: true);
-      await AsrEngine.configureForTest(worker: UiWorker.new, start: () async => true,
-        stop: () async {}, stream: () => pcm.stream);
-      await AsrEngine.warmUp();
+      await tester.runAsync(() async {
+        await AsrEngine.configureForTest(worker: UiWorker.new, start: () async => true,
+          stop: () async {}, stream: () => pcm.stream);
+        await AsrEngine.warmUp();
+      });
       debugPrint('UI baseline: model fixture ready');
       await tester.pumpWidget(AppScope(store: store, palette: p, child: MaterialApp(
         theme: buildTheme(p), home: const AppShell())));
@@ -68,7 +70,7 @@ void main() {
       expect(store.bills, isEmpty); // Draft is never an implicit ledger write.
       await expectLater(root, matchesGoldenFile('goldens/review_$label.png'));
       await tester.pumpWidget(const SizedBox.shrink()); await tester.pump();
-      await AsrEngine.dispose(); await pcm.close(); store.dispose();
+      await tester.runAsync(() async { await AsrEngine.dispose(); await pcm.close(); }); store.dispose();
       expect(tester.takeException(), isNull);
     });
   }
