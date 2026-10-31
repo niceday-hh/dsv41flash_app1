@@ -78,7 +78,8 @@ class AsrEngine {
     _generation++; _preparing = null; _ready = false; _pressure = false;
     _releaseTimer?.cancel(); _releaseTimer = null;
     final worker = _worker; _worker = null;
-    return Future.wait<void>([if (worker != null) _closeModel(worker), cancelCapture(refreshModel: false)]).then((_) {});
+    if (worker != null) unawaited(_closeModel(worker));
+    return Future.wait<void>([_modelTransition, cancelCapture(refreshModel: false)]).then((_) {});
   }
 
   static Future<bool> startCapture() async {
