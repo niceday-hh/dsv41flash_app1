@@ -53,7 +53,7 @@ void main() {
       await tester.pump(); await tester.pump(const Duration(milliseconds: 20));
       final bytes = Uint8List(16000); for (var i=0;i<bytes.length;i+=2) { bytes[i]=128; bytes[i+1]=16; }
       pcm.add(bytes); await tester.pump(const Duration(milliseconds: 480));
-      await gesture.up(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200)); await tester.pump();
+      await gesture.up(); await tester.runAsync(() async { await Future<void>.delayed(const Duration(milliseconds:20)); }); await tester.pump(); await tester.pump(const Duration(milliseconds: 200)); await tester.pump();
       for (var i=0; i<20 && find.text('重说').evaluate().isEmpty; i++) { await tester.pump(const Duration(milliseconds:50)); }
       debugPrint('Voice state: ${tester.widgetList<Text>(find.byType(Text)).map((t)=>t.data).whereType<String>().join(' | ')}');
       debugPrint('UI baseline: recognition returned');
