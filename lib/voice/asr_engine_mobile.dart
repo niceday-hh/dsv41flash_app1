@@ -29,6 +29,7 @@ class AsrEngine {
   static Timer? _releaseTimer;
   static DateTime? _backgroundSince;
   static Future<void> _micTransition = Future.value();
+  static Future<void> _modelTransition = Future.value();
   static final BytesBuilder _pcm = BytesBuilder(copy: false);
   static StreamSubscription<Uint8List>? _sub;
   static double _level = 0;
@@ -45,10 +46,18 @@ class AsrEngine {
   static Future<void> _prepare() {
     if (_disposed || _background) return Future.error(StateError('语音已暂停'));
     if (_ready) return Future.value();
-    return _preparing ??= _prepareCurrent();
+    final existing = _preparing;
+    if (existing != null) return existing;
+    final task = _preparing = _prepareCurrent();
+    unawaited(task.then<void>((_) {}, onError: (Object _, StackTrace __) {
+      if (identical(_preparing, task)) _preparing = null;
+    }));
+    return task;
   }
   static Future<void> _prepareCurrent() async {
     final generation = _generation;
+    await _modelTransition;
+    if (_disposed || generation != _generation || _background) throw StateError('语音准备已取消');
     final worker = _worker ??= _factory();
     try {
       await worker.prepare().timeout(const Duration(seconds: 45));
@@ -56,14 +65,20 @@ class AsrEngine {
       _ready = true;
     } catch (_) {
       if (identical(worker, _worker)) { _worker = null; _ready = false; _preparing = null; }
-      worker.close(); rethrow;
+      unawaited(_closeModel(worker)); rethrow;
     }
+  }
+  static Future<void> _closeModel(ModelWorker worker) {
+    final closing = worker.close().catchError((Object _) {});
+    final previous = _modelTransition;
+    _modelTransition = Future.wait<void>([previous, closing]).then((_) {});
+    return closing;
   }
   static Future<void> release() {
     _generation++; _preparing = null; _ready = false; _pressure = false;
     _releaseTimer?.cancel(); _releaseTimer = null;
-    final worker = _worker; _worker = null; worker?.close();
-    return cancelCapture(refreshModel: false);
+    final worker = _worker; _worker = null;
+    return Future.wait<void>([if (worker != null) _closeModel(worker), cancelCapture(refreshModel: false)]).then((_) {});
   }
 
   static Future<bool> startCapture() async {
@@ -97,12 +112,18 @@ class AsrEngine {
   static Future<void> cancelCapture({bool refreshModel = true}) {
     final needsStop = _capturing || _sub != null;
     if (_decoding && _worker != null) {
-      _generation++; _worker?.close(); _worker = null; _preparing = null; _ready = false;
+      _generation++;
+      final worker = _worker; _worker = null;
+      if (worker != null) unawaited(_closeModel(worker));
+      _preparing = null; _ready = false;
       if (refreshModel && !_pressure && !_background && !_disposed && _enabled) unawaited(warmUp());
     }
     _decoding = false;
     if (_pressure) {
-      _generation++; _worker?.close(); _worker = null; _preparing = null; _ready = false; _pressure = false;
+      _generation++;
+      final worker = _worker; _worker = null;
+      if (worker != null) unawaited(_closeModel(worker));
+      _preparing = null; _ready = false; _pressure = false;
     }
     _captureGeneration++; _capturing = false; _level = 0;
     final sub = _sub; _sub = null; _pcm.clear();
@@ -171,7 +192,7 @@ class AsrEngine {
   static Future<void> configureForTest({ModelWorker Function()? worker,
       Future<bool> Function()? start, Future<void> Function()? stop,
       Stream<Uint8List> Function()? stream, DateTime Function()? clock}) async {
-    await release();
+    await release(); await _modelTransition;
     _factory = worker ?? LocalModelWorker.new;
     _startMic = start ?? Mic.start; _stopMic = stop ?? Mic.stop;
     _micStream = stream ?? () => Mic.stream; _clock = clock ?? DateTime.now;

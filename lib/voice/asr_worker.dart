@@ -30,6 +30,7 @@ void asrWorkerMain(List<Object?> args) {
     );
     main.send(<Object?>['ready', inbox.sendPort]);
   } catch (e) {
+    recognizer?.free();
     main.send(<Object?>['initError', e.toString()]);
     inbox.close();
     return;
@@ -55,6 +56,7 @@ void asrWorkerMain(List<Object?> args) {
       try {
         recognizer!.free();
       } catch (_) {}
+      main.send(<Object?>['closed', id, '']);
       inbox.close();
     }
   });

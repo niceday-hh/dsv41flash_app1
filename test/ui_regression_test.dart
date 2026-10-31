@@ -15,7 +15,7 @@ import 'package:whale_ledger/voice/asr_engine_mobile.dart';
 class UiWorker implements ModelWorker {
   @override Future<void> prepare() async {}
   @override Future<String> recognize(Float32List samples) async => '午饭28元，备注牛肉面';
-  @override void close() {}
+  @override Future<void> close() async {}
 }
 void main() {
   setUpAll(() async {

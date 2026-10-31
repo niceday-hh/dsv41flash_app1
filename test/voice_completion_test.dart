@@ -7,14 +7,14 @@ import 'package:whale_ledger/voice/asr_engine_mobile.dart';
 import 'package:whale_ledger/voice/model_worker.dart';
 
 class FakeWorker implements ModelWorker {
-  Completer<void>? ready;
+  Completer<void>? ready, closeGate;
   Completer<String>? decoding;
   bool closed = false;
   int preparations = 0, decodes = 0;
   String text = '午饭28元，备注牛肉面';
   @override Future<void> prepare() async { preparations++; await ready?.future; }
   @override Future<String> recognize(Float32List samples) async { decodes++; return decoding == null ? text : decoding!.future; }
-  @override void close() { closed = true; }
+  @override Future<void> close() async { closed = true; await closeGate?.future; }
 }
 Uint8List speech() {
   final bytes = Uint8List(16000);
@@ -103,6 +103,21 @@ void main() {
     final result = AsrEngine.stopAndRecognize(); await tick();
     await AsrEngine.cancelCapture(); worker.decoding!.complete('旧账单100元');
     expect(await result, isEmpty); expect(worker.closed, isTrue);
+  });
+  test('new model waits for native release acknowledgement', () async {
+    await configure(); await AsrEngine.warmUp();
+    final old = workers.single..closeGate = Completer<void>();
+    final retiring = AsrEngine.release();
+    final warming = AsrEngine.warmUp(); await tick();
+    expect(old.closed,isTrue); expect(workers.length,1);
+    old.closeGate!.complete(); await retiring; await warming;
+    expect(workers.length,2);
+  });
+  test('background before preparation starts can retry on quick resume', () async {
+    await configure();
+    final warming = AsrEngine.warmUp(); AsrEngine.onAppPaused();
+    await warming; AsrEngine.onAppResumed(); await AsrEngine.warmUp();
+    expect(AsrEngine.isReady,isTrue); expect(workers.length,1);
   });
   test('silence and very short capture never reach recognition', () async {
     await configure(); await AsrEngine.startCapture(); pcm.add(Uint8List(16000));

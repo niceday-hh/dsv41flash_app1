@@ -8,7 +8,7 @@ import 'asr_worker.dart';
 abstract class ModelWorker {
   Future<void> prepare();
   Future<String> recognize(Float32List samples);
-  void close();
+  Future<void> close();
 }
 
 /// Both extraction (Android executor) and inference (isolate) avoid the UI heap.
@@ -20,6 +20,8 @@ class LocalModelWorker implements ModelWorker {
   Completer<void>? _ready;
   final Map<int, Completer<String>> _pending = {};
   int _id = 0;
+  final _released = Completer<void>();
+  Timer? _closeDeadline;
   @override
   Future<void> prepare() async {
     if (!Platform.isAndroid) throw StateError('请在 Android 客户端使用离线语音');
@@ -33,8 +35,12 @@ class LocalModelWorker implements ModelWorker {
       final data = message as List;
       if (data[0] == 'ready') {
         _commands = data[1] as SendPort;
-        if (!ready.isCompleted) ready.complete();
+        if (_closed) { _commands!.send(<Object?>['close', 0]); }
+        else if (!ready.isCompleted) ready.complete();
+      } else if (data[0] == 'closed') {
+        _finishClose();
       } else if (data[0] == 'initError') {
+        if (_closed) _finishClose();
         if (!ready.isCompleted) ready.completeError(StateError('${data[1]}'));
       } else {
         final c = _pending.remove(data[1] as int);
@@ -43,8 +49,8 @@ class LocalModelWorker implements ModelWorker {
       }
     });
     final isolate = await Isolate.spawn(asrWorkerMain, <Object?>[responses.sendPort, dir], debugName: 'whale-asr');
-    if (_closed) { isolate.kill(priority: Isolate.immediate); throw StateError('语音准备已取消'); }
     _isolate = isolate;
+    if (_released.isCompleted) { isolate.kill(priority: Isolate.immediate); throw StateError('语音准备已取消'); }
     await ready.future;
   }
   @override
@@ -57,14 +63,27 @@ class LocalModelWorker implements ModelWorker {
     finally { _pending.remove(id); }
   }
   @override
-  void close() {
-    if (_closed) return;
+  Future<void> close() {
+    if (_closed) return _released.future;
     _closed = true;
     final ready = _ready;
     if (ready != null && !ready.isCompleted) ready.completeError(StateError('语音准备已取消'));
     for (final c in _pending.values) { if (!c.isCompleted) c.completeError(StateError('语音识别已取消')); }
     _pending.clear();
+    // sherpa_onnx requires explicit free(); killing an isolate alone leaks
+    // its native recognizer. Let initialization/decode finish, then free and ack.
+    if (_responses == null) { _finishClose(); }
+    else {
+      _closeDeadline = Timer(const Duration(seconds: 45), _finishClose);
+      _commands?.send(<Object?>['close', 0]);
+    }
+    return _released.future;
+  }
+  void _finishClose() {
+    if (_released.isCompleted) return;
+    _closeDeadline?.cancel(); _closeDeadline = null;
     _responses?.close(); _responses = null;
     _isolate?.kill(priority: Isolate.immediate); _isolate = null; _commands = null;
+    _released.complete();
   }
 }
