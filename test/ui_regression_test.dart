@@ -24,6 +24,13 @@ void main() {
   });
   for (final dark in [false, true]) {
     testWidgets('1.5.7 UI parity ${dark ? 'dark' : 'light'}', (tester) async {
+      final originalError = FlutterError.onError;
+      FlutterError.onError = (details) {
+        debugPrint('Visual fixture error: ${details.exceptionAsString()}');
+        debugPrintStack(stackTrace: details.stack);
+        originalError?.call(details);
+      };
+      addTearDown(() { FlutterError.onError = originalError; });
       tester.view.physicalSize = const Size(420, 900); tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize); addTearDown(tester.view.resetDevicePixelRatio);
       final store = AppStore(); final p = Palette.of(dark, 0);
