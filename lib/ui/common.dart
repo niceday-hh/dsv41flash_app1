@@ -459,7 +459,10 @@ class GlassPanel extends StatelessWidget {
         color: p.dark
             ? Color.lerp(
                     const Color(0xFF151723), const Color(0xFF1B1E2C), opacity)!
-                .withOpacity(opacity + 0.14)
+                // Preserve the alpha byte rendered by v1.5.7 release builds,
+                // including its dark navigation bar. Avoid withOpacity's
+                // debug assertion for the legacy opacity + 0.14 > 1 case.
+                .withAlpha(((opacity + 0.14) * 255).round() & 0xff)
             : Colors.white.withOpacity(opacity),
         borderRadius: BorderRadius.circular(radius),
         border: Border.all(
@@ -588,3 +591,4 @@ class EmptyState extends StatelessWidget {
     );
   }
 }
+

@@ -69,6 +69,17 @@ jobs:
           # the released v1.5.7 source, not the changed voice sheet or add sheet.
           cp lib/voice/asr_engine_mobile.dart lib/voice/model_worker.dart "$BASE/lib/voice/"
           cp test/ui_regression_test.dart "$BASE/test/"
+          # Normalize one invalid v1.5.7 dark alpha to the exact color byte
+          # that its release APK renders; no layout or palette is replaced.
+          python3 - "$BASE/lib/ui/common.dart" <<'PYBASE'
+          import sys
+          from pathlib import Path
+          p = Path(sys.argv[1])
+          source = p.read_text()
+          assert '.withOpacity(opacity + 0.14)' in source
+          p.write_text(source.replace('.withOpacity(opacity + 0.14)',
+              '.withAlpha(((opacity + 0.14) * 255).round() & 0xff)'))
+          PYBASE
           mkdir -p "$BASE/assets/asr"
           cp assets/asr/MODEL_LICENSE.txt "$BASE/assets/asr/"
           (cd "$BASE" && flutter pub get && timeout --kill-after=10s 120s flutter test --timeout 45s --reporter expanded --update-goldens test/ui_regression_test.dart)
