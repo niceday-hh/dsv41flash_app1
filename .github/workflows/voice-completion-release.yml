@@ -27,7 +27,7 @@ jobs:
       - name: Retire superseded release jobs
         run: |
           gh run list --branch release/v1.5.8 --limit 20 --json databaseId,status --jq '.[] | select(.status != "completed") | .databaseId' | while read -r id; do
-            if [ "$id" != "$GITHUB_RUN_ID" ]; then gh run cancel "$id" --force || true; fi
+            if [ "$id" -lt "$GITHUB_RUN_ID" ]; then gh run cancel "$id" --force || true; fi
           done
       - uses: actions/setup-java@v4
         with:
