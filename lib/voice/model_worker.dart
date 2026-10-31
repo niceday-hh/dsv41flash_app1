@@ -40,8 +40,8 @@ class LocalModelWorker implements ModelWorker {
       } else if (data[0] == 'closed') {
         _finishClose();
       } else if (data[0] == 'initError') {
-        if (_closed) _finishClose();
         if (!ready.isCompleted) ready.completeError(StateError('${data[1]}'));
+        _finishClose();
       } else {
         final c = _pending.remove(data[1] as int);
         if (data[0] == 'ok') { c?.complete('${data[2]}'); }
