@@ -20,7 +20,7 @@ Future<bool?> showBillSheet(BuildContext context,
     bool expense = true,
     String? catId,
     double? initialAmount,
-    String? initialNote}) {
+    String? initialNote, DateTime? initialDate}) {
   final AppStore store = AppScope.storeOf(context);
   return showModalBottomSheet<bool>(
     context: context,
@@ -43,6 +43,7 @@ Future<bool?> showBillSheet(BuildContext context,
         initialCatId: bill?.catId ?? catId,
         initialAmount: initialAmount,
         initialNote: initialNote,
+        initialDate: initialDate,
       ),
     ),
   );
@@ -59,6 +60,7 @@ class _BillSheet extends StatefulWidget {
   final String? initialCatId;
   final double? initialAmount;
   final String? initialNote;
+  final DateTime? initialDate;
 
   const _BillSheet({
     Key? key,
@@ -68,6 +70,7 @@ class _BillSheet extends StatefulWidget {
     this.initialCatId,
     this.initialAmount,
     this.initialNote,
+    this.initialDate,
   }) : super(key: key);
 
   @override
@@ -91,7 +94,7 @@ class _BillSheetState extends State<_BillSheet> {
     final Bill? b = widget.bill;
     _expense = b?.expense ?? widget.initialExpense;
     _catId = b?.catId ?? widget.initialCatId ?? catsFor(_expense).first.id;
-    _date = b?.date ?? DateTime.now();
+    _date = b?.date ?? widget.initialDate ?? DateTime.now();
     _noteCtrl =
         TextEditingController(text: b?.note ?? widget.initialNote ?? '');
     if (b == null &&
@@ -891,3 +894,4 @@ Future<bool> _confirmDelete(BuildContext context) async {
   );
   return ok ?? false;
 }
+

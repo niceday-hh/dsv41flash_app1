@@ -47,6 +47,7 @@ class _BootstrapState extends State<Bootstrap> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    unawaited(asr.AsrEngine.dispose());
     super.dispose();
   }
 
@@ -61,6 +62,8 @@ class _BootstrapState extends State<Bootstrap> with WidgetsBindingObserver {
       asr.AsrEngine.onAppResumed();
     } else if (state == AppLifecycleState.paused || state == AppLifecycleState.hidden) {
       asr.AsrEngine.onAppPaused();
+    } else if (state == AppLifecycleState.detached) {
+      unawaited(asr.AsrEngine.dispose());
     }
   }
 
@@ -241,3 +244,4 @@ class _SplashState extends State<_Splash> with SingleTickerProviderStateMixin {
     );
   }
 }
+

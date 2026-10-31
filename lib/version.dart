@@ -4,6 +4,7 @@
 library;
 
 const String kAppName = '鲸记账';
-const String kAppVersion = '1.5.7';
-const int kAppBuild = 13;
+const String kAppVersion = '1.5.8';
+const int kAppBuild = 14;
 const String kAppVersionLabel = '$kAppVersion+$kAppBuild';
+

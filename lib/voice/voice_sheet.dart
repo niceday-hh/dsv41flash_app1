@@ -46,6 +46,8 @@ class _VoiceSheetState extends State<_VoiceSheet>
   VoiceIntent? _intent;
   final Set<String> _edited = <String>{};
   bool _holding = false;
+  int _generation = 0, _parseGeneration = 0;
+  Future<bool>? _starting;
 
   /// 模型仍在后台准备；此时允许先按住说话，录音与加载并行
   bool _modelLoading = false;
@@ -64,6 +66,9 @@ class _VoiceSheetState extends State<_VoiceSheet>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // 面板打开期间从后台回来，补一次预热（模型可能已被释放）
     if (state == AppLifecycleState.resumed) _boot();
+    if (state == AppLifecycleState.hidden || state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      unawaited(_cancelHold());
+    }
   }
 
   @override
@@ -73,7 +78,8 @@ class _VoiceSheetState extends State<_VoiceSheet>
     _reparseDebounce?.cancel();
     _wave.dispose();
     _textCtrl.dispose();
-    if (_holding) asr.AsrEngine.cancelCapture();
+    _generation++; _parseGeneration++;
+    unawaited(asr.AsrEngine.cancelCapture());
     super.dispose();
   }
 
@@ -118,6 +124,8 @@ class _VoiceSheetState extends State<_VoiceSheet>
     if (_stage == _Stage.recognizing || _holding) return;
     HapticFeedback.mediumImpact();
     _holding = true;
+    final generation = ++_generation;
+    _parseGeneration++; _reparseDebounce?.cancel();
     setState(() {
       _stage = _Stage.recording;
       _seconds = 0;
@@ -135,7 +143,8 @@ class _VoiceSheetState extends State<_VoiceSheet>
       });
       if (_seconds >= 30) _endHold();
     });
-    final bool ok = await asr.AsrEngine.startCapture();
+    final bool ok = await (_starting = asr.AsrEngine.startCapture());
+    if (!mounted || generation != _generation) return;
     if (!ok && mounted) {
       _ticker?.cancel();
       _ticker = null;
@@ -149,34 +158,25 @@ class _VoiceSheetState extends State<_VoiceSheet>
 
   /// 把用户的历史备注喂给解析器，用于按自己的说法推荐分类
   List<NoteHint> _history() {
-    final AppStore store = AppScope.storeOf(context);
-    final List<NoteHint> out = <NoteHint>[];
-    for (final bool exp in <bool>[true, false]) {
-      for (final NoteStat n in store.noteStats(expense: exp)) {
-        out.add(NoteHint(
-          n.text,
-          n.cats.isEmpty ? (exp ? 'other' : 'otherin') : n.cats.first,
-          n.count,
-        ));
-      }
-    }
-    return out;
+    return voiceHistory(AppScope.storeOf(context).bills);
   }
 
   Future<void> _endHold() async {
     if (!_holding) return;
     _holding = false;
+    final generation = _generation;
     _ticker?.cancel();
     _ticker = null;
-    if (!mounted) return;
+    final ok = await _starting;
+    if (!mounted || generation != _generation || ok != true) return;
     setState(() {
       _stage = _Stage.recognizing;
-      _message = '识别中…';
+      _message = asr.AsrEngine.isReady ? '识别中…' : '已录好，正在准备识别…';
       _level = 0;
     });
     try {
       final String text = await asr.AsrEngine.stopAndRecognize();
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       if (text.trim().isEmpty) {
         setState(() {
           _stage = _Stage.ready;
@@ -187,25 +187,27 @@ class _VoiceSheetState extends State<_VoiceSheet>
       }
       _textCtrl.text = text;
       _textCtrl.selection = TextSelection.collapsed(offset: text.length);
-      final VoiceIntent parsed = parseVoice(text, history: _history());
+      final VoiceIntent parsed = await parseVoiceAsync(text, history: _history());
+      if (!mounted || generation != _generation) return;
       setState(() {
         _intent = parsed;
         _stage = _Stage.review;
         _message = '';
         _modelLoading = !asr.AsrEngine.isReady;
       });
-    } catch (_) {
-      if (!mounted) return;
+    } catch (error) {
+      if (!mounted || generation != _generation) return;
       setState(() {
         _stage = _Stage.ready;
         _modelLoading = !asr.AsrEngine.isReady;
-        _message = asr.AsrEngine.isReady ? '识别失败，请重试' : '模型准备中，请再试一次';
+        _message = error is StateError ? '${error.message}' : '识别失败，请重试';
       });
     }
   }
 
   Future<void> _cancelHold() async {
-    if (!_holding) return;
+    if (!_holding && _stage != _Stage.recognizing && _stage != _Stage.recording) return;
+    _generation++; _parseGeneration++;
     _holding = false;
     _ticker?.cancel();
     _ticker = null;
@@ -223,19 +225,24 @@ class _VoiceSheetState extends State<_VoiceSheet>
   void _onTextChanged() {
     if (_stage != _Stage.review) return;
     _reparseDebounce?.cancel();
-    _reparseDebounce = Timer(const Duration(milliseconds: 420), () {
+    final generation = ++_parseGeneration;
+    _reparseDebounce = Timer(const Duration(milliseconds: 420), () async {
       if (!mounted || _stage != _Stage.review) return;
       final VoiceIntent? prev = _intent;
       if (prev == null) return;
-      final VoiceIntent next = parseVoice(_textCtrl.text, history: _history());
+      final VoiceIntent next = await parseVoiceAsync(_textCtrl.text, history: _history(),
+        expenseOverride: _edited.contains('type') ? prev.expense : null,
+        noteOverride: _edited.contains('note') ? prev.note : null);
+      if (!mounted || generation != _parseGeneration || _stage != _Stage.review) return;
+      final current = _intent!;
       setState(() {
         // 用户手动改过的字段不被重新解析覆盖
         _intent = next.copyWith(
-          amount: _edited.contains('amount') ? prev.amount : null,
-          catId: _edited.contains('category') ? prev.catId : null,
-          date: _edited.contains('date') ? prev.date : null,
-          expense: _edited.contains('type') ? prev.expense : null,
-          note: _edited.contains('note') ? prev.note : null,
+          amount: _edited.contains('amount') ? current.amount : null,
+          catId: _edited.contains('category') ? current.catId : null,
+          date: _edited.contains('date') ? current.date : null,
+          expense: _edited.contains('type') ? current.expense : null,
+          note: _edited.contains('note') ? current.note : null,
         );
       });
     });
@@ -766,12 +773,13 @@ class _VoiceSheetState extends State<_VoiceSheet>
     final VoiceIntent? intent = _intent;
     if (intent == null || intent.expense == expense) return;
     HapticFeedback.selectionClick();
-    final CategoryDef current = catById(intent.catId);
-    final String catId = current.expense == expense ? current.id : catsFor(expense).first.id;
+    final next = parseVoice(_textCtrl.text, history: _history(), expenseOverride: expense,
+      noteOverride: _edited.contains('note') ? intent.note : null);
     setState(() {
       _edited.add('type');
-      _edited.add('category');
-      _intent = intent.copyWith(expense: expense, catId: catId);
+      _edited.remove('category');
+      _intent = next.copyWith(amount: intent.amount, date: intent.date, note: intent.note);
     });
   }
 }
+

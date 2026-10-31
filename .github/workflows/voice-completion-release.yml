@@ -1,0 +1,122 @@
+name: Voice completion and release v1.5.8
+on:
+  push:
+    branches: [release/v1.5.8]
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-v1.5.8
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Prepare pinned full offline model
+        run: python3 tool/prepare_voice_model.py
+      - name: Restore existing signing identity
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_B64"
+          test -n "$KEYSTORE_PASSWORD"
+          export KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+          export KEY_ALIAS="${KEY_ALIAS:-whale}"
+          echo "KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > android/key.jks
+          printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=../key.jks\n' "$KEYSTORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
+      - name: Resolve
+        run: flutter pub get
+      - name: Analyze changed voice code
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings lib/voice test lib/app_shell.dart lib/ui/add_sheet.dart
+      - name: Generate visual baselines from v1.5.7
+        run: |
+          set -euo pipefail
+          BASE="$RUNNER_TEMP/whale-ui-baseline"
+          mkdir -p "$BASE"
+          git archive v1.5.7 | tar -x -C "$BASE"
+          # Inject the testable audio backend only. Every baseline UI file is
+          # the released v1.5.7 source, not the changed voice sheet or add sheet.
+          cp lib/voice/asr_engine_mobile.dart lib/voice/model_worker.dart "$BASE/lib/voice/"
+          cp test/ui_regression_test.dart "$BASE/test/"
+          mkdir -p "$BASE/assets/asr"
+          cp assets/asr/MODEL_LICENSE.txt "$BASE/assets/asr/"
+          (cd "$BASE" && flutter pub get && flutter test --update-goldens test/ui_regression_test.dart)
+          mkdir -p test/goldens
+          cp "$BASE/test/goldens/"*.png test/goldens/
+      - name: All rules, lifecycle, gesture and visual regression tests
+        run: flutter test --timeout 90s
+      - name: Real Paraformer inference
+        run: |
+          set -euo pipefail
+          LIB="$(find "$HOME/.pub-cache" -path '*sherpa_onnx_linux*/linux/x64/*' -name libsherpa-onnx-c-api.so | head -1)"
+          test -n "$LIB"
+          export LD_LIBRARY_PATH="$(dirname "$LIB"):${LD_LIBRARY_PATH:-}"
+          dart run tool/voice_smoke.dart
+      - name: Build full ARM64 APK
+        run: flutter build apk --release --target-platform android-arm64
+      - name: Sign and compare installed-release identity
+        run: |
+          set -euo pipefail
+          bash tool/sign_release_apk.sh build/app/outputs/flutter-apk/app-release.apk
+          SIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          APK=build/app/outputs/flutter-apk/app-release.apk
+          "$SIGNER" verify --min-sdk-version 23 --verbose --print-certs "$APK" | tee "$RUNNER_TEMP/signature.txt"
+          for v in 1 2 3; do grep -q "Verified using v${v} scheme.*true" "$RUNNER_TEMP/signature.txt"; done
+          CERT="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' "$RUNNER_TEMP/signature.txt")"
+          java tool/VerifyApkCertificates.java "$APK" "$CERT"
+          mkdir -p "$RUNNER_TEMP/previous"
+          gh release download v1.5.7 -p app-release.apk -D "$RUNNER_TEMP/previous"
+          OLD_CERT="$("$SIGNER" verify --print-certs "$RUNNER_TEMP/previous/app-release.apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p')"
+          test "$CERT" = "$OLD_CERT"
+          echo "Verified unchanged v1.5.7 certificate: $CERT"
+      - name: Verify bundled model and Android metadata
+        run: |
+          python3 - <<'PY'
+          import hashlib, zipfile
+          from tool.prepare_voice_model import FILES
+          with zipfile.ZipFile('build/app/outputs/flutter-apk/app-release.apk') as apk:
+              for name, (size, expected) in FILES.items():
+                  path = 'assets/flutter_assets/assets/asr/' + name
+                  assert apk.getinfo(path).file_size == size
+                  h = hashlib.sha256()
+                  with apk.open(path) as f:
+                      for block in iter(lambda: f.read(1048576), b''): h.update(block)
+                  assert h.hexdigest() == expected
+              assert any('arm64-v8a' in p and p.endswith('libsherpa-onnx-c-api.so') for p in apk.namelist())
+              assert 'assets/flutter_assets/assets/asr/MODEL_LICENSE.txt' in apk.namelist()
+          print('Full real model and native ASR verified')
+          PY
+      - name: Publish and verify downloaded bytes
+        run: |
+          set -euo pipefail
+          NAME=whale-ledger-v1.5.8-arm64.apk
+          cp build/app/outputs/flutter-apk/app-release.apk "$NAME"
+          sha256sum "$NAME" > "$NAME.sha256"
+          gh release create v1.5.8 --target "$GITHUB_SHA" --title '鲸记账 v1.5.8' --notes-file release_notes/v1.5.8.md
+          gh release upload v1.5.8 "$NAME" "$NAME.sha256"
+          mkdir -p "$RUNNER_TEMP/published"
+          gh release download v1.5.8 -p "$NAME" -p "$NAME.sha256" -D "$RUNNER_TEMP/published"
+          (cd "$RUNNER_TEMP/published" && sha256sum -c "$NAME.sha256")
+          cmp "$NAME" "$RUNNER_TEMP/published/$NAME"
+          SIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          "$SIGNER" verify --min-sdk-version 23 --verbose --print-certs "$RUNNER_TEMP/published/$NAME"

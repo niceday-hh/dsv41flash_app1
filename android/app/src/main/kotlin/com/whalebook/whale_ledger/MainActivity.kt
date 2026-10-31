@@ -30,6 +30,8 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
     private val micPermissionCode = 4303
     private val notifPermissionCode = 4304
 
+    private val voiceAssets = VoiceAssets(this)
+    @Volatile private var micGeneration = 0
     private var eventSink: EventChannel.EventSink? = null
     private var audioRecord: AudioRecord? = null
     private var recordThread: Thread? = null
@@ -46,6 +48,7 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        voiceAssets.attach(flutterEngine)
 
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, micEventName).setStreamHandler(this)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, micChannelName)
@@ -231,13 +234,14 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
             audioRecord = record
             recording = true
             record.startRecording()
+            val generation = ++micGeneration
             val chunk = ByteArray(3200)
             recordThread = Thread {
-                while (recording) {
-                    val n = record.read(chunk, 0, chunk.size)
+                while (recording && generation == micGeneration) {
+                    val n = try { record.read(chunk, 0, chunk.size) } catch (_: Exception) { break }
                     if (n > 0) {
                         val data = chunk.copyOf(n)
-                        runOnUiThread { eventSink?.success(data) }
+                        runOnUiThread { if (recording && generation == micGeneration) eventSink?.success(data) }
                     }
                 }
             }.also { it.start() }
@@ -250,8 +254,13 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
 
     private fun stopMic() {
         recording = false
+        micGeneration++
+        val pending = permissionResult
+        permissionResult = null
+        pending?.success(false)
+        try { audioRecord?.stop() } catch (_: Exception) {}
         try {
-            recordThread?.join(300)
+            recordThread?.join(100)
         } catch (_: Exception) {
         }
         recordThread = null
@@ -290,8 +299,15 @@ class MainActivity : FlutterActivity(), EventChannel.StreamHandler {
         }
     }
 
+    override fun onStop() {
+        stopMic()
+        super.onStop()
+    }
+
     override fun onDestroy() {
         stopMic()
+        voiceAssets.close()
         super.onDestroy()
     }
 }
+

@@ -1,7 +1,7 @@
 name: whale_ledger
 description: 鲸记账 · 一款时尚轻盈的 iOS 风格记账应用
 publish_to: 'none'
-version: 1.5.7+13
+version: 1.5.8+14
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -29,3 +29,4 @@ flutter:
     - family: WenKai
       fonts:
         - asset: assets/fonts/LXGWWenKai-subset.ttf
+

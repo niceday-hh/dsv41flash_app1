@@ -41,16 +41,16 @@ void asrWorkerMain(List<Object?> args) {
     final int id = data[1] as int;
     if (cmd == 'recognize') {
       final Float32List samples = data[2] as Float32List;
+      sherpa.OfflineStream? stream;
       try {
-        final sherpa.OfflineStream stream = recognizer!.createStream();
+        stream = recognizer!.createStream();
         stream.acceptWaveform(samples: samples, sampleRate: 16000);
         recognizer.decode(stream);
         final String text = recognizer.getResult(stream).text;
-        stream.free();
         main.send(<Object?>['ok', id, text]);
       } catch (e) {
         main.send(<Object?>['error', id, e.toString()]);
-      }
+      } finally { stream?.free(); }
     } else if (cmd == 'close') {
       try {
         recognizer!.free();
@@ -59,3 +59,4 @@ void asrWorkerMain(List<Object?> args) {
     }
   });
 }
+

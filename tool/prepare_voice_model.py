@@ -26,8 +26,8 @@ from pathlib import Path
 REPO = 'csukuangfj/sherpa-onnx-paraformer-zh-2024-03-09'
 REVISION = '906992d326ebf0c5171cde675aa0902be9e5bc6c'
 MIRRORS = [
-    'https://hf-mirror.com/{repo}/resolve/{rev}/{name}',
     'https://huggingface.co/{repo}/resolve/{rev}/{name}',
+    'https://hf-mirror.com/{repo}/resolve/{rev}/{name}',
 ]
 
 # name -> (size, sha256)
@@ -105,6 +105,10 @@ def main() -> int:
     for name in FILES:
         src = download(name)
         shutil.copy2(src, OUTPUT / name)
+    sample = CACHE / 'test_wavs/0.wav'
+    sample.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(['curl', '--fail', '-L', '--retry', '3', '--max-time', '120',
+      '-o', str(sample), f'https://huggingface.co/{REPO}/resolve/{REVISION}/test_wavs/0.wav'], check=True)
     total = sum((OUTPUT / n).stat().st_size for n in FILES)
     print(f'完成：{OUTPUT} （{total / 1048576:.1f} MB）')
     print('现在可以执行：flutter build apk --release')
@@ -113,3 +117,4 @@ def main() -> int:
 
 if __name__ == '__main__':
     sys.exit(main())
+

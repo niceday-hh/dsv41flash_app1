@@ -64,6 +64,7 @@ class _AppShellState extends State<AppShell>
       catId: intent.catId,
       initialAmount: intent.amount,
       initialNote: intent.note,
+      initialDate: intent.date,
     );
     if (ok == true && mounted) showToast(context, '记账成功');
   }
@@ -261,3 +262,4 @@ class _Backdrop extends StatelessWidget {
     );
   }
 }
+
