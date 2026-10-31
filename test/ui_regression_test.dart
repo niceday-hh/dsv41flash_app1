@@ -31,15 +31,19 @@ void main() {
       await AsrEngine.configureForTest(worker: UiWorker.new, start: () async => true,
         stop: () async {}, stream: () => pcm.stream);
       await AsrEngine.warmUp();
+      debugPrint('UI baseline: model fixture ready');
       await tester.pumpWidget(AppScope(store: store, palette: p, child: MaterialApp(
         theme: buildTheme(p), home: const AppShell())));
       await tester.pumpAndSettle();
+      debugPrint('UI baseline: home settled');
       final root = find.byType(MaterialApp);
       final label = dark ? 'dark' : 'light';
       await expectLater(root, matchesGoldenFile('goldens/home_$label.png'));
+      debugPrint('UI baseline: home captured');
       final context = tester.element(find.byType(AppShell));
       unawaited(showAddBillSheet(context)); await tester.pumpAndSettle();
       await expectLater(root, matchesGoldenFile('goldens/manual_$label.png'));
+      debugPrint('UI baseline: manual captured');
       Navigator.of(context).pop(); await tester.pumpAndSettle();
       unawaited(showVoiceSheet(context)); await tester.pump(const Duration(milliseconds: 500));
       await tester.pump();
@@ -50,6 +54,7 @@ void main() {
       final bytes = Uint8List(16000); for (var i=0;i<bytes.length;i+=2) { bytes[i]=128; bytes[i+1]=16; }
       pcm.add(bytes); await tester.pump(const Duration(milliseconds: 480));
       await gesture.up(); await tester.pump(); await tester.pump(const Duration(milliseconds: 200)); await tester.pump();
+      debugPrint('UI baseline: recognition returned');
       expect(find.text('重说'), findsOneWidget);
       expect(store.bills, isEmpty); // Draft is never an implicit ledger write.
       await expectLater(root, matchesGoldenFile('goldens/review_$label.png'));

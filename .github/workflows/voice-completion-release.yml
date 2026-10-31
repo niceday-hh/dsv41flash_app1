@@ -61,7 +61,7 @@ jobs:
           cp test/ui_regression_test.dart "$BASE/test/"
           mkdir -p "$BASE/assets/asr"
           cp assets/asr/MODEL_LICENSE.txt "$BASE/assets/asr/"
-          (cd "$BASE" && flutter pub get && flutter test --update-goldens test/ui_regression_test.dart)
+          (cd "$BASE" && flutter pub get && flutter test --timeout 45s --reporter expanded --update-goldens test/ui_regression_test.dart)
           mkdir -p test/goldens
           cp "$BASE/test/goldens/"*.png test/goldens/
       - name: All rules, lifecycle, gesture and visual regression tests
